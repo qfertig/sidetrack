@@ -1,6 +1,5 @@
 package com.sidespot
 
-import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.view.KeyEvent
@@ -8,7 +7,6 @@ import android.view.ViewConfiguration
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sidespot.auth.AuthManager
 import com.sidespot.bridge.NativeBridge
@@ -16,7 +14,6 @@ import com.sidespot.settings.SettingsManager
 import com.sidespot.ui.SidespotNavigation
 import com.sidespot.ui.SidespotTheme
 import com.sidespot.viewmodel.PlayerViewModel
-import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -45,9 +42,6 @@ class MainActivity : ComponentActivity() {
         // Push initial config to native before any connect
         settingsManager.pushConfigToNative()
 
-        // Handle deep link on cold start
-        handleAuthCallback(intent)
-
         setContent {
             SidespotTheme {
                 val vm: PlayerViewModel = viewModel()
@@ -74,28 +68,6 @@ class MainActivity : ComponentActivity() {
                 if (inTouchMode) post {
                     try { requestFocusFromTouch() } catch (_: IllegalStateException) {}
                 }
-            }
-        }
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        handleAuthCallback(intent)
-    }
-
-    private fun handleAuthCallback(intent: Intent?) {
-        val uri = intent?.data ?: return
-        if (uri.scheme == "sidespot" && uri.host == "callback") {
-            val code = uri.getQueryParameter("code") ?: return
-            // Clear the intent data so we don't re-process on activity recreation
-            intent.data = null
-            // Skip if already authenticated (stale callback from process restart)
-            if (authManager.state.value.isAuthenticated) {
-                Log.i("SidespotAuth", "handleAuthCallback: skipping, already authenticated")
-                return
-            }
-            lifecycleScope.launch {
-                authManager.exchangeCode(code)
             }
         }
     }

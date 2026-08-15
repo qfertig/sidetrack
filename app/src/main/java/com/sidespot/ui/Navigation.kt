@@ -299,13 +299,15 @@ fun SidespotNavigation(
                         LoginScreen(
                             authState = authState,
                             onSignIn = {
-                                val authUri = authManager.buildAuthUri()
-                                try {
-                                    context.startActivity(Intent(Intent.ACTION_VIEW, authUri))
-                                } catch (e: ActivityNotFoundException) {
-                                    authManager.setError(
-                                        "No browser installed — please install a web browser to sign in."
-                                    )
+                                authManager.signIn { authUri ->
+                                    try {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, authUri))
+                                    } catch (e: ActivityNotFoundException) {
+                                        authManager.cancelSignIn()
+                                        authManager.setError(
+                                            "No browser installed — please install a web browser to sign in."
+                                        )
+                                    }
                                 }
                             },
                         )

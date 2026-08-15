@@ -5,17 +5,28 @@ import android.content.SharedPreferences
 import android.net.Uri
 import android.util.Base64
 import android.util.Log
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
+import java.net.InetAddress
+import java.net.ServerSocket
+import java.net.Socket
+import java.net.SocketTimeoutException
 import java.net.URL
 import java.security.MessageDigest
 import java.security.SecureRandom
+import kotlin.coroutines.coroutineContext
 
 data class AuthState(
     val isAuthenticated: Boolean = false,
@@ -34,19 +45,38 @@ class AuthManager private constructor(context: Context) {
         private const val TOKEN_TYPE_ACCESS = "access_token"
         private const val TOKEN_TYPE_REFRESH = "refresh_token"
         private const val KEY_EXPIRES_AT = "expires_at_ms"
-        private const val KEY_CODE_VERIFIER = "code_verifier"
-        private const val KEY_SCOPES_HASH = "scopes_hash"
+        private const val KEY_GRANT_HASH = "scopes_hash"
 
-        private const val CLIENT_ID = "09751e7755284a0bbe10707c6bde85a0"
-        private const val REDIRECT_URI = "sidespot://callback"
+        /** Spotify's own desktop ("keymaster") client id.
+         *
+         *  This must stay in step with the client id librespot presents at login5
+         *  (`SessionConfig::default()` in native/librespot-local/core/src/config.rs).
+         *  Since 2026-08-10 Spotify rejects the login5 stored-credential exchange
+         *  whenever the access token was minted by a different client id, which
+         *  fails every spclient call with INVALID_CREDENTIALS. */
+        private const val CLIENT_ID = "65b708073fc0480ea92a077233ca87bd"
+
+        /** Loopback redirect path registered for [CLIENT_ID]; the port is chosen
+         *  per sign-in by the callback listener. */
+        private const val REDIRECT_PATH = "/login"
+
+        /** The scope set librespot requests for this client id. */
         private const val SCOPES =
-            "streaming playlist-read playlist-read-private user-library-read " +
-            "user-library-modify playlist-modify-public playlist-modify-private " +
-            "user-read-playback-state user-modify-playback-state " +
-            "user-read-currently-playing user-read-private " +
-            "user-read-recently-played"
+            "app-remote-control playlist-modify playlist-modify-private " +
+            "playlist-modify-public playlist-read playlist-read-collaborative " +
+            "playlist-read-private streaming ugc-image-upload user-follow-modify " +
+            "user-follow-read user-library-modify user-library-read user-modify " +
+            "user-modify-playback-state user-modify-private user-personalized " +
+            "user-read-birthdate user-read-currently-playing user-read-email " +
+            "user-read-play-history user-read-playback-position " +
+            "user-read-playback-state user-read-private user-read-recently-played " +
+            "user-top-read"
+
         private const val AUTH_URL = "https://accounts.spotify.com/authorize"
         private const val TOKEN_URL = "https://accounts.spotify.com/api/token"
+
+        /** How long the loopback listener waits for the browser to come back. */
+        private const val CALLBACK_TIMEOUT_MS = 5 * 60 * 1000
 
         @Volatile
         private var instance: AuthManager? = null
@@ -63,60 +93,193 @@ class AuthManager private constructor(context: Context) {
     private val _state = MutableStateFlow(AuthState())
     val state: StateFlow<AuthState> = _state.asStateFlow()
 
+    /** Application-scoped so an Activity recreation while the browser is in front
+     *  doesn't tear down the listener the redirect is about to hit. */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var signInJob: Job? = null
+
     init {
         val token = prefs.getString(TOKEN_TYPE_ACCESS, null)
         Log.i(TAG, "init: token present=${token != null}")
         _state.value = AuthState(isAuthenticated = token != null)
     }
 
-    fun buildAuthUri(): Uri {
+    /**
+     * Run the PKCE authorization-code flow against a loopback redirect.
+     *
+     * [openBrowser] is invoked on the main thread with the authorization URL once
+     * the callback listener is bound; the resulting code is exchanged in place, so
+     * no deep link or Activity round-trip is involved.
+     */
+    fun signIn(openBrowser: (Uri) -> Unit) {
+        if (signInJob?.isActive == true) {
+            Log.i(TAG, "signIn: already in progress, ignoring")
+            return
+        }
+        signInJob = scope.launch { runSignIn(openBrowser) }
+    }
+
+    fun cancelSignIn() {
+        signInJob?.cancel()
+        signInJob = null
+        if (_state.value.isLoading) {
+            _state.value = _state.value.copy(isLoading = false)
+        }
+    }
+
+    private suspend fun runSignIn(openBrowser: (Uri) -> Unit) {
+        _state.value = _state.value.copy(isLoading = true, error = null)
+
         val verifier = generateCodeVerifier()
-        val challenge = generateCodeChallenge(verifier)
+        val csrfState = generateCsrfState()
 
-        prefs.edit().putString(KEY_CODE_VERIFIER, verifier).commit()
+        try {
+            ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { server ->
+                server.soTimeout = CALLBACK_TIMEOUT_MS
+                val redirectUri = "http://127.0.0.1:${server.localPort}$REDIRECT_PATH"
+                Log.i(TAG, "signIn: listening on $redirectUri")
 
-        return Uri.parse(AUTH_URL).buildUpon()
+                val authUri = buildAuthUri(
+                    challenge = generateCodeChallenge(verifier),
+                    redirectUri = redirectUri,
+                    csrfState = csrfState,
+                )
+                withContext(Dispatchers.Main) { openBrowser(authUri) }
+
+                val code = awaitAuthorizationCode(server, csrfState)
+                exchangeCode(code, verifier, redirectUri)
+            }
+        } catch (e: CancellationException) {
+            // cancelSignIn()/logout() closed the listener — not an error to report.
+            throw e
+        } catch (e: SocketTimeoutException) {
+            Log.i(TAG, "signIn: timed out waiting for callback", e)
+            _state.value = _state.value.copy(
+                isLoading = false,
+                error = "Sign-in timed out — please try again",
+            )
+        } catch (e: SignInDeniedException) {
+            Log.i(TAG, "signIn: denied (${e.message})")
+            _state.value = _state.value.copy(isLoading = false, error = e.message)
+        } catch (e: Exception) {
+            // Cancelling closes the listener, which surfaces as a SocketException
+            // rather than CancellationException — don't report that as a failure.
+            coroutineContext.ensureActive()
+            Log.i(TAG, "signIn: failed", e)
+            _state.value = _state.value.copy(
+                isLoading = false,
+                error = "Sign-in failed: ${e.message}",
+            )
+        }
+    }
+
+    private class SignInDeniedException(message: String) : Exception(message)
+
+    private fun buildAuthUri(challenge: String, redirectUri: String, csrfState: String): Uri =
+        Uri.parse(AUTH_URL).buildUpon()
             .appendQueryParameter("client_id", CLIENT_ID)
             .appendQueryParameter("response_type", "code")
-            .appendQueryParameter("redirect_uri", REDIRECT_URI)
+            .appendQueryParameter("redirect_uri", redirectUri)
             .appendQueryParameter("scope", SCOPES)
+            .appendQueryParameter("state", csrfState)
             .appendQueryParameter("code_challenge_method", "S256")
             .appendQueryParameter("code_challenge", challenge)
             .build()
+
+    /**
+     * Accept connections until the browser hits [REDIRECT_PATH], then return the
+     * authorization code. Other requests (favicon probes, mostly) are answered and
+     * ignored.
+     */
+    private suspend fun awaitAuthorizationCode(server: ServerSocket, csrfState: String): String {
+        // A blocking accept() won't notice coroutine cancellation on its own; closing
+        // the socket from the completion handler breaks it out.
+        val closeOnCancel = coroutineContext[Job]?.invokeOnCompletion {
+            runCatching { server.close() }
+        }
+        try {
+            while (true) {
+                val code = server.accept().use { readCallback(it, csrfState) }
+                if (code != null) return code
+            }
+        } finally {
+            closeOnCancel?.dispose()
+        }
     }
 
-    suspend fun exchangeCode(code: String) {
-        _state.value = _state.value.copy(isLoading = true, error = null)
-
-        val verifier = prefs.getString(KEY_CODE_VERIFIER, null)
-        if (verifier == null) {
-            _state.value = _state.value.copy(
-                isLoading = false,
-                error = "Missing code verifier — please try signing in again",
-            )
-            return
+    /** Returns the authorization code if this request was the callback, else null. */
+    private fun readCallback(socket: Socket, csrfState: String): String? {
+        val requestLine = socket.getInputStream().bufferedReader().readLine()
+            ?: return null
+        // "GET /login?code=...&state=... HTTP/1.1"
+        val target = requestLine.split(' ').getOrNull(1) ?: return null
+        if (!target.startsWith(REDIRECT_PATH)) {
+            respond(socket, "Waiting for Spotify…")
+            return null
         }
 
-        try {
-            val body = mapOf(
-                "grant_type" to "authorization_code",
-                "code" to code,
-                "redirect_uri" to REDIRECT_URI,
-                "client_id" to CLIENT_ID,
-                "code_verifier" to verifier,
-            )
-            val json = postTokenRequest(body)
-            saveTokens(json)
-            _state.value = AuthState(
-                isAuthenticated = true,
-                version = _state.value.version + 1,
-            )
-        } catch (e: Exception) {
-            _state.value = _state.value.copy(
-                isLoading = false,
-                error = "Token exchange failed: ${e.message}",
+        val params = Uri.parse("http://127.0.0.1$target")
+        val error = params.getQueryParameter("error")
+        if (error != null) {
+            respond(socket, "Sign-in was cancelled. You can close this page.")
+            throw SignInDeniedException(
+                if (error == "access_denied") "Sign-in was cancelled"
+                else "Spotify rejected the sign-in: $error"
             )
         }
+
+        if (params.getQueryParameter("state") != csrfState) {
+            respond(socket, "Sign-in could not be verified. You can close this page.")
+            throw SignInDeniedException("Sign-in could not be verified — please try again")
+        }
+
+        val code = params.getQueryParameter("code")
+        if (code == null) {
+            respond(socket, "Sign-in could not be completed. You can close this page.")
+            throw SignInDeniedException("Spotify did not return an authorization code")
+        }
+
+        respond(socket, "Signed in to Sidespot. You can close this page and return to the app.")
+        return code
+    }
+
+    private fun respond(socket: Socket, message: String) {
+        val body = """
+            <!doctype html><meta charset="utf-8">
+            <meta name="viewport" content="width=device-width,initial-scale=1">
+            <title>Sidespot</title>
+            <body style="font-family:sans-serif;background:#111;color:#eee;padding:2rem">
+            <p>$message</p>
+        """.trimIndent()
+        val response = buildString {
+            append("HTTP/1.1 200 OK\r\n")
+            append("Content-Type: text/html; charset=utf-8\r\n")
+            append("Content-Length: ${body.toByteArray().size}\r\n")
+            append("Connection: close\r\n\r\n")
+            append(body)
+        }
+        runCatching {
+            socket.getOutputStream().apply {
+                write(response.toByteArray())
+                flush()
+            }
+        }
+    }
+
+    private suspend fun exchangeCode(code: String, verifier: String, redirectUri: String) {
+        val body = mapOf(
+            "grant_type" to "authorization_code",
+            "code" to code,
+            "redirect_uri" to redirectUri,
+            "client_id" to CLIENT_ID,
+            "code_verifier" to verifier,
+        )
+        val json = postTokenRequest(body)
+        saveTokens(json)
+        _state.value = AuthState(
+            isAuthenticated = true,
+            version = _state.value.version + 1,
+        )
     }
 
     suspend fun refreshAccessToken(): String? {
@@ -171,20 +334,24 @@ class AuthManager private constructor(context: Context) {
 
     fun logout() {
         Log.i(TAG, "logout: called")
+        cancelSignIn()
         prefs.edit().clear().commit()
         _state.value = AuthState(isAuthenticated = false)
     }
 
+    /** True when the stored token was issued under a different client id or scope
+     *  set than this build asks for, so it has to be thrown away and re-granted. */
     fun needsReauth(): Boolean {
-        val stored = prefs.getString(KEY_SCOPES_HASH, null)
-        val computed = scopesHash()
+        val stored = prefs.getString(KEY_GRANT_HASH, null)
+        val computed = grantHash()
         val result = stored != computed
         Log.i(TAG, "needsReauth: stored=$stored computed=$computed result=$result")
         return result
     }
 
-    private fun scopesHash(): String {
-        val digest = MessageDigest.getInstance("SHA-256").digest(SCOPES.toByteArray())
+    private fun grantHash(): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest("$CLIENT_ID $SCOPES".toByteArray())
         return digest.joinToString("") { "%02x".format(it) }
     }
 
@@ -197,8 +364,7 @@ class AuthManager private constructor(context: Context) {
                 }
             }
             .putString(KEY_EXPIRES_AT, (System.currentTimeMillis() + json.getInt("expires_in") * 1000L).toString())
-            .putString(KEY_SCOPES_HASH, scopesHash())
-            .remove(KEY_CODE_VERIFIER)
+            .putString(KEY_GRANT_HASH, grantHash())
             .commit()
         Log.i(TAG, "saveTokens: stored in SharedPreferences")
     }
@@ -242,5 +408,11 @@ class AuthManager private constructor(context: Context) {
     private fun generateCodeChallenge(verifier: String): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(Charsets.US_ASCII))
         return Base64.encodeToString(digest, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+    }
+
+    private fun generateCsrfState(): String {
+        val bytes = ByteArray(16)
+        SecureRandom().nextBytes(bytes)
+        return Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
     }
 }
