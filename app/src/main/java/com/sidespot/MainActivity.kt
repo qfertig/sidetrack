@@ -7,6 +7,9 @@ import android.view.ViewConfiguration
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sidespot.auth.AuthManager
 import com.sidespot.bridge.NativeBridge
@@ -35,6 +38,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        applyImmersiveMode()
 
         authManager = AuthManager.getInstance(this)
         settingsManager = SettingsManager(this)
@@ -72,6 +76,19 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) applyImmersiveMode()
+    }
+
+    /** Hide status + nav bars — flip phone has no on-screen nav buttons. */
+    private fun applyImmersiveMode() {
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        controller.hide(WindowInsetsCompat.Type.systemBars())
+        controller.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+    }
+
     private fun adjustVolume(up: Boolean): Boolean {
         val step = 65535 / 20
         val current = NativeBridge.playerGetVolume()
@@ -95,64 +112,48 @@ class MainActivity : ComponentActivity() {
             Log.i("Sundial", "keyCode=${event.keyCode} (${KeyEvent.keyCodeToString(event.keyCode)})")
         }
 
-        // Tab key — intercept before Compose consumes it for focus traversal
-        if (event.keyCode == KeyEvent.KEYCODE_TAB) {
+        // Toggle Now Playing overlay: Tab (Sundial), Soft Right or # (Flip phones)
+        if (event.keyCode == KeyEvent.KEYCODE_TAB ||
+            event.keyCode == KeyEvent.KEYCODE_SOFT_RIGHT ||
+            event.keyCode == KeyEvent.KEYCODE_POUND
+        ) {
             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
                 onNowPlayingToggleRequested?.invoke()
             }
             return true
         }
 
-        // DPAD_LEFT — cycle bottom nav tabs
-        if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+        // Cycle bottom nav tabs: Soft Left or * (Flip phones)
+        if (event.keyCode == KeyEvent.KEYCODE_SOFT_LEFT || event.keyCode == KeyEvent.KEYCODE_STAR) {
             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
                 onTabCycleRequested?.invoke()
             }
             return true
         }
 
-        // DPAD_RIGHT — translate to BACK so it dismisses bottom sheets and navigates back
-        if (event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-            val translated = KeyEvent(
-                event.downTime, event.eventTime, event.action,
-                KeyEvent.KEYCODE_BACK, event.repeatCount, event.metaState,
-                event.deviceId, event.scanCode, event.flags, event.source,
-            )
-            return super.dispatchKeyEvent(translated)
+        // Menu key — open row actions sheet
+        if (event.keyCode == KeyEvent.KEYCODE_MENU) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                dispatchSyntheticKey(KeyEvent.KEYCODE_ENTER)
+            }
+            return true
         }
 
-        // Center button: Play/Pause on Now Playing; short press = select, long press = row actions elsewhere
-        if (event.keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
-            if (isNowPlayingVisible) {
-                if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
-                    val vm = playerViewModel ?: return true
-                    if (vm.uiState.value.isPlaying) vm.pause() else vm.play()
-                }
-                return true
+        // Center button / OK: Play/Pause on Now Playing
+        if (isNowPlayingVisible && (event.keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE || event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER)) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                val vm = playerViewModel ?: return true
+                if (vm.uiState.value.isPlaying) vm.pause() else vm.play()
             }
+            return true
+        }
 
-            // On list screens: hold all events, decide on release
-            when (event.action) {
-                KeyEvent.ACTION_DOWN -> {
-                    if (event.repeatCount == 0) {
-                        centerDownTime = event.eventTime
-                        centerLongPressed = false
-                    } else if (!centerLongPressed) {
-                        val held = event.eventTime - centerDownTime
-                        if (held >= ViewConfiguration.getLongPressTimeout()) {
-                            centerLongPressed = true
-                            dispatchSyntheticKey(KeyEvent.KEYCODE_ENTER)
-                        }
-                    }
-                    return true
-                }
-                KeyEvent.ACTION_UP -> {
-                    if (!centerLongPressed) {
-                        dispatchSyntheticKey(KeyEvent.KEYCODE_DPAD_CENTER)
-                    }
-                    return true
-                }
+        if (event.keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) {
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+                val vm = playerViewModel ?: return true
+                if (vm.uiState.value.isPlaying) vm.pause() else vm.play()
             }
+            return true
         }
 
         return super.dispatchKeyEvent(event)
@@ -186,6 +187,18 @@ class MainActivity : ComponentActivity() {
             KeyEvent.KEYCODE_DPAD_DOWN -> {
                 if (isNowPlayingVisible) adjustVolume(up = false)
                 else super.onKeyDown(keyCode, event)
+            }
+
+            // D-pad left/right — skip track on Now Playing, focus traversal elsewhere
+            KeyEvent.KEYCODE_DPAD_LEFT -> {
+                if (isNowPlayingVisible) {
+                    playerViewModel?.previous(); true
+                } else super.onKeyDown(keyCode, event)
+            }
+            KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                if (isNowPlayingVisible) {
+                    playerViewModel?.next(); true
+                } else super.onKeyDown(keyCode, event)
             }
 
             else -> super.onKeyDown(keyCode, event)

@@ -56,7 +56,7 @@ Additional adaptations when a Sundial is detected:
 ## Requirements
 
 - Spotify Premium account
-- Android 12+ (API 31+), arm64 device
+- Android 12+ (API 31+), ARM device (arm64-v8a or armeabi-v7a)
 
 ## Install
 
@@ -102,14 +102,14 @@ your existing app and your login and settings are preserved.
 
 - **Java 17** (e.g. `brew install openjdk@17`)
 - **Android SDK** (API 34) with NDK `27.0.12077973`
-- **Rust toolchain** with the `aarch64-linux-android` target
+- **Rust toolchain** with `aarch64-linux-android` and `armv7-linux-androideabi` targets
 - **[cargo-ndk](https://github.com/nicegram/aspect-cargo-ndk)** (`cargo install cargo-ndk`)
 
 ### Setup
 
 ```sh
-# Install Rust Android target
-rustup target add aarch64-linux-android
+# Install Rust Android targets
+rustup target add aarch64-linux-android armv7-linux-androideabi
 
 # Clone with submodules (librespot)
 git clone --recurse-submodules https://github.com/jtaekman/sidespot.git
@@ -164,9 +164,9 @@ keyPassword=your-key-password
 ## Current Limitations
 
 - **Spotify Premium required** -- free-tier accounts are not supported by librespot
-- **arm64 only** -- the native library is built exclusively for `arm64-v8a` (aarch64)
+- **ARM only** -- the native library is built for `arm64-v8a` and `armeabi-v7a`
 - **No lossless/HiFi** -- max quality is 320 kbps OGG Vorbis. Spotify's lossless tier uses DRM that librespot cannot and will not circumvent
-- **No Spotify Connect** -- the device does not appear as a Spotify Connect target
+- **Spotify Connect (receive-only)** -- pairs via Zeroconf so the official Spotify app can hand off playback to it, but it doesn't advertise/control other Connect targets itself
 - **No crossfade** -- crossfade between tracks is not supported
 - **No offline mode** -- streaming only, no download/cache for offline listening
 - **Account risk** -- Spotify has not sanctioned third-party clients. Use at your own risk

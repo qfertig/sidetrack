@@ -5,6 +5,7 @@
 
 mod audio_sink;
 mod bridge;
+mod discovery;
 mod error;
 mod library;
 mod metadata;

@@ -3,6 +3,7 @@ package com.sidespot.auth
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
+import android.net.wifi.WifiManager
 import android.util.Base64
 import android.util.Log
 import kotlinx.coroutines.CancellationException
@@ -16,6 +17,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
+import com.sidespot.bridge.NativeBridge
 import org.json.JSONObject
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
@@ -37,6 +40,13 @@ data class AuthState(
     val version: Int = 0,
 )
 
+/** UI state for the Zeroconf ("Pair with Spotify app") sign-in flow. */
+sealed class ZeroconfState {
+    object Idle : ZeroconfState()
+    data class Pending(val deviceName: String) : ZeroconfState()
+    data class Error(val message: String) : ZeroconfState()
+}
+
 class AuthManager private constructor(context: Context) {
 
     companion object {
@@ -46,6 +56,16 @@ class AuthManager private constructor(context: Context) {
         private const val TOKEN_TYPE_REFRESH = "refresh_token"
         private const val KEY_EXPIRES_AT = "expires_at_ms"
         private const val KEY_GRANT_HASH = "scopes_hash"
+
+        /** Zeroconf-paired stored credentials — an alternative to the OAuth
+         *  tokens above, set once by [startZeroconfPairing] and reused on
+         *  every relaunch since (unlike an OAuth access token) they don't expire. */
+        private const val KEY_ZC_USERNAME = "zc_username"
+        private const val KEY_ZC_AUTH_DATA = "zc_auth_data"
+        private const val KEY_ZC_AUTH_TYPE = "zc_auth_type"
+
+        /** How often to poll native for a Zeroconf pairing result. */
+        private const val DISCOVERY_POLL_INTERVAL_MS = 500L
 
         /** Spotify's own desktop ("keymaster") client id.
          *
@@ -87,11 +107,19 @@ class AuthManager private constructor(context: Context) {
             }
     }
 
+    private val appContext: Context = context.applicationContext
+
     private val prefs: SharedPreferences =
         context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     private val _state = MutableStateFlow(AuthState())
     val state: StateFlow<AuthState> = _state.asStateFlow()
+
+    private val _zeroconfState = MutableStateFlow<ZeroconfState>(ZeroconfState.Idle)
+    val zeroconfState: StateFlow<ZeroconfState> = _zeroconfState.asStateFlow()
+
+    private var multicastLock: WifiManager.MulticastLock? = null
+    private var discoveryPollJob: Job? = null
 
     /** Application-scoped so an Activity recreation while the browser is in front
      *  doesn't tear down the listener the redirect is about to hit. */
@@ -100,8 +128,9 @@ class AuthManager private constructor(context: Context) {
 
     init {
         val token = prefs.getString(TOKEN_TYPE_ACCESS, null)
-        Log.i(TAG, "init: token present=${token != null}")
-        _state.value = AuthState(isAuthenticated = token != null)
+        val hasZeroconf = hasZeroconfCredentials()
+        Log.i(TAG, "init: token present=${token != null} zeroconf present=$hasZeroconf")
+        _state.value = AuthState(isAuthenticated = token != null || hasZeroconf)
     }
 
     /**
@@ -125,6 +154,124 @@ class AuthManager private constructor(context: Context) {
         if (_state.value.isLoading) {
             _state.value = _state.value.copy(isLoading = false)
         }
+    }
+
+    /**
+     * Start Spotify Connect Zeroconf pairing under [deviceName]: this device
+     * advertises itself over mDNS so the official Spotify app (on any phone on
+     * the same network) can find it under Devices and hand over credentials
+     * directly — no browser, no OAuth redirect, so it isn't limited to loopback.
+     */
+    fun startZeroconfPairing(deviceName: String) {
+        if (discoveryPollJob?.isActive == true) {
+            Log.i(TAG, "startZeroconfPairing: already in progress, ignoring")
+            return
+        }
+        _zeroconfState.value = ZeroconfState.Pending(deviceName)
+
+        acquireMulticastLock()
+        NativeBridge.discoveryStart(deviceName)
+
+        discoveryPollJob = scope.launch {
+            try {
+                while (true) {
+                    val json = NativeBridge.discoveryPollResult()?.let { JSONObject(it) } ?: break
+                    when (json.optString("status")) {
+                        "connected" -> {
+                            prefs.edit()
+                                .putString(KEY_ZC_USERNAME, json.getString("username"))
+                                .putString(KEY_ZC_AUTH_DATA, json.getString("authData"))
+                                .putString(KEY_ZC_AUTH_TYPE, json.getInt("authType").toString())
+                                .commit()
+                            Log.i(TAG, "startZeroconfPairing: paired as ${json.getString("username")}")
+                            _zeroconfState.value = ZeroconfState.Idle
+                            _state.value = AuthState(
+                                isAuthenticated = true,
+                                version = _state.value.version + 1,
+                            )
+                            releaseMulticastLock()
+                            return@launch
+                        }
+                        "error" -> {
+                            val message = json.optString("message", "Pairing failed")
+                            Log.i(TAG, "startZeroconfPairing: failed: $message")
+                            _zeroconfState.value = ZeroconfState.Error(message)
+                            releaseMulticastLock()
+                            return@launch
+                        }
+                        else -> { /* idle or pending — keep polling */ }
+                    }
+                    delay(DISCOVERY_POLL_INTERVAL_MS)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.i(TAG, "startZeroconfPairing: polling failed", e)
+                _zeroconfState.value = ZeroconfState.Error("Pairing failed: ${e.message}")
+                releaseMulticastLock()
+            }
+        }
+    }
+
+    /** Cancel an in-progress Zeroconf pairing. */
+    fun cancelZeroconfPairing() {
+        discoveryPollJob?.cancel()
+        discoveryPollJob = null
+        NativeBridge.discoveryStop()
+        releaseMulticastLock()
+        _zeroconfState.value = ZeroconfState.Idle
+    }
+
+    /** Android drops mDNS multicast packets by default to save battery —
+     *  advertising for Zeroconf pairing needs this lock held while it runs. */
+    private fun acquireMulticastLock() {
+        try {
+            val wifiManager = appContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            val lock = wifiManager?.createMulticastLock("sidespot-zeroconf")
+            lock?.setReferenceCounted(false)
+            lock?.acquire()
+            multicastLock = lock
+        } catch (e: Exception) {
+            Log.w(TAG, "acquireMulticastLock failed", e)
+        }
+    }
+
+    private fun releaseMulticastLock() {
+        try {
+            multicastLock?.let { if (it.isHeld) it.release() }
+        } catch (e: Exception) {
+            Log.w(TAG, "releaseMulticastLock failed", e)
+        }
+        multicastLock = null
+    }
+
+    fun hasZeroconfCredentials(): Boolean =
+        prefs.getString(KEY_ZC_USERNAME, null) != null
+
+    /**
+     * Connect the native Spotify session using whichever credentials this
+     * device is signed in with (OAuth token or Zeroconf-paired stored
+     * credentials). Used both for the initial connect and for reconnecting
+     * after a transient failure.
+     *
+     * @return null on success, or an error message on failure.
+     */
+    suspend fun connectNativeSession(): String? {
+        if (NativeBridge.sessionIsConnected()) return null
+
+        val oauthToken = getValidAccessToken()
+        if (oauthToken != null) {
+            return NativeBridge.sessionConnect(oauthToken)
+        }
+
+        val zcUsername = prefs.getString(KEY_ZC_USERNAME, null)
+        val zcAuthData = prefs.getString(KEY_ZC_AUTH_DATA, null)
+        val zcAuthType = prefs.getString(KEY_ZC_AUTH_TYPE, null)?.toIntOrNull()
+        if (zcUsername != null && zcAuthData != null && zcAuthType != null) {
+            return NativeBridge.sessionConnectWithCredentials(zcUsername, zcAuthData, zcAuthType)
+        }
+
+        return "Not signed in"
     }
 
     private suspend fun runSignIn(openBrowser: (Uri) -> Unit) {
@@ -335,13 +482,17 @@ class AuthManager private constructor(context: Context) {
     fun logout() {
         Log.i(TAG, "logout: called")
         cancelSignIn()
+        cancelZeroconfPairing()
         prefs.edit().clear().commit()
         _state.value = AuthState(isAuthenticated = false)
     }
 
     /** True when the stored token was issued under a different client id or scope
-     *  set than this build asks for, so it has to be thrown away and re-granted. */
+     *  set than this build asks for, so it has to be thrown away and re-granted.
+     *  Zeroconf-paired credentials aren't an OAuth grant, so this never applies
+     *  to them — only to a stored OAuth access token. */
     fun needsReauth(): Boolean {
+        if (prefs.getString(TOKEN_TYPE_ACCESS, null) == null) return false
         val stored = prefs.getString(KEY_GRANT_HASH, null)
         val computed = grantHash()
         val result = stored != computed

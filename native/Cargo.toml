@@ -19,10 +19,17 @@ librespot-core = { path = "librespot-local/core", default-features = false, feat
 librespot-metadata = { path = "librespot-local/metadata", default-features = false, features = ["rustls-tls-webpki-roots"] }
 librespot-playback = { path = "librespot-local/playback", default-features = false, features = ["rustls-tls-webpki-roots"] }
 librespot-oauth = { path = "librespot-local/oauth", default-features = false, features = ["rustls-tls-webpki-roots"] }
+librespot-discovery = { path = "librespot-local/discovery", default-features = false, features = ["with-libmdns", "rustls-tls-webpki-roots"] }
 librespot-protocol = { path = "librespot-local/protocol", default-features = false }
 
 # Protobuf (for parsing raw SpClient responses)
 protobuf = "3.7"
+
+# Stream trait for consuming the Zeroconf discovery credential stream
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+
+# Encoding stored Zeroconf credentials for the Kotlin side
+base64 = "0.22"
 
 # Async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros", "time"] }

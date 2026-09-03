@@ -46,6 +46,29 @@ object NativeBridge {
     /** Check if a session is currently connected. */
     external fun sessionIsConnected(): Boolean
 
+    /**
+     * Connect to Spotify with a previously-stored Zeroconf credential blob
+     * (from a completed [discoveryStart] pairing).
+     * @return null on success, or an error message string on failure.
+     */
+    external fun sessionConnectWithCredentials(username: String, authDataBase64: String, authType: Int): String?
+
+    // -- Zeroconf (Spotify Connect) pairing --
+
+    /** Start advertising this device for Zeroconf pairing under [deviceName]. */
+    external fun discoveryStart(deviceName: String)
+
+    /** Stop advertising and abandon any pairing in progress. */
+    external fun discoveryStop()
+
+    /**
+     * Poll the current Zeroconf pairing status.
+     * @return JSON string: `{"status":"idle"|"pending"}`,
+     *   `{"status":"connected","username":...,"authData":...,"authType":...}`,
+     *   or `{"status":"error","message":...}`.
+     */
+    external fun discoveryPollResult(): String?
+
     // -- Audio callback registration --
 
     /**

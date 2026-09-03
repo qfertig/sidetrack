@@ -70,7 +70,7 @@ class PlayerViewModel : ViewModel() {
     private var isReconnecting = false
     private var isPlayerStopped = false
     private var stoppedPositionMs: Long = 0L
-    private var tokenProvider: (suspend () -> String?)? = null
+    private var connector: (suspend () -> String?)? = null
     private var historyManager: PlayHistoryManager? = null
 
     /**
@@ -112,9 +112,15 @@ class PlayerViewModel : ViewModel() {
         }
     }
 
-    fun connect(accessToken: String, getToken: (suspend () -> String?)? = null) {
+    /**
+     * [connector] performs whichever native session-connect variant applies
+     * (OAuth token or Zeroconf-paired stored credentials) and returns an error
+     * message, or null on success — see `AuthManager.connectNativeSession()`.
+     * It's retained for [attemptReconnect] to re-run after a transient failure.
+     */
+    fun connect(connector: suspend () -> String?) {
         if (_uiState.value.isConnected) return
-        tokenProvider = getToken
+        this.connector = connector
         viewModelScope.launch(Dispatchers.IO) {
             _uiState.update { it.copy(connectionStatus = "Connecting...", error = null) }
 
@@ -130,7 +136,7 @@ class PlayerViewModel : ViewModel() {
                 return@launch
             }
 
-            val error = NativeBridge.sessionConnect(accessToken)
+            val error = connector()
             if (error != null) {
                 _uiState.update {
                     it.copy(
@@ -787,8 +793,8 @@ class PlayerViewModel : ViewModel() {
         isReconnecting = true
         try {
             NativeBridge.sessionDisconnect()
-            val token = tokenProvider?.invoke() ?: return false
-            val error = NativeBridge.sessionConnect(token)
+            val reconnect = connector ?: return false
+            val error = reconnect()
             if (error != null) return false
             val playerError = NativeBridge.playerRecreate()
             if (playerError != null) return false

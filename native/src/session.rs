@@ -47,6 +47,13 @@ fn session_slot() -> &'static Arc<Mutex<Option<Session>>> {
 /// Connect to Spotify with the given access token.
 /// Returns Ok(()) on success, stores the session globally.
 pub async fn connect_with_token(access_token: &str) -> Result<()> {
+    connect_with_credentials(Credentials::with_access_token(access_token)).await
+}
+
+/// Connect to Spotify with already-built credentials (OAuth access token or
+/// Zeroconf-derived stored credentials). Returns Ok(()) on success, stores the
+/// session globally.
+pub async fn connect_with_credentials(credentials: Credentials) -> Result<()> {
     let mut config = SessionConfig::default();
     if let Some(tmp) = get_tmp_dir() {
         config.tmp_dir = tmp;
@@ -59,8 +66,6 @@ pub async fn connect_with_token(access_token: &str) -> Result<()> {
             config.autoplay = Some(autoplay);
         }
     }
-
-    let credentials = Credentials::with_access_token(access_token);
 
     let session = Session::new(config, None);
 
@@ -75,6 +80,33 @@ pub async fn connect_with_token(access_token: &str) -> Result<()> {
     *slot = Some(session);
 
     Ok(())
+}
+
+/// Connect using a Zeroconf-derived stored credential blob (username +
+/// base64 auth_data + protobuf AuthenticationType value), as persisted from
+/// a previous [`crate::discovery`] pairing.
+pub async fn connect_with_stored_credentials(
+    username: String,
+    auth_data_b64: String,
+    auth_type_value: i32,
+) -> Result<()> {
+    use base64::Engine as _;
+    use protobuf::Enum;
+
+    let auth_data = base64::engine::general_purpose::STANDARD
+        .decode(auth_data_b64)
+        .map_err(|e| SidespotError::Session(format!("invalid stored credentials: {e}")))?;
+    let auth_type = librespot_protocol::authentication::AuthenticationType::from_i32(
+        auth_type_value,
+    )
+    .ok_or_else(|| SidespotError::Session("invalid stored credentials: bad auth type".into()))?;
+
+    connect_with_credentials(Credentials {
+        username: Some(username),
+        auth_type,
+        auth_data,
+    })
+    .await
 }
 
 /// Disconnect the current session.

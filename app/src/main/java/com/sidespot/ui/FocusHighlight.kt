@@ -33,11 +33,12 @@ private val DPAD_NAV_CODES = setOf(
 )
 
 private val DPAD_BACK_CODES = setOf(
-    KeyEvent.KEYCODE_DPAD_RIGHT,
+    KeyEvent.KEYCODE_BACK,
+    KeyEvent.KEYCODE_ESCAPE,
 )
 
-/** Global toggle: true after any D-pad key, false after any touch. */
-private val dpadActive = mutableStateOf(false)
+/** Global toggle: true after any D-pad key, false after any touch. Default true for keypad devices. */
+private val dpadActive = mutableStateOf(true)
 
 fun Modifier.focusHighlight(
     color: Color = Color.Unspecified,
@@ -64,17 +65,15 @@ fun Modifier.focusHighlight(
         .onPreviewKeyEvent { event ->
             val native = event.nativeKeyEvent
             if (native.action == KeyEvent.ACTION_DOWN) {
-                val wasInactive = !dpadActive.value
                 dpadActive.value = true
-                if (wasInactive && native.keyCode in DPAD_NAV_CODES) {
-                    return@onPreviewKeyEvent true
-                }
             }
             if (onEnterKey != null && hasFocus) {
                 val kc = native.keyCode
                 when {
                     native.action == KeyEvent.ACTION_DOWN && (
                         kc == KeyEvent.KEYCODE_ENTER ||
+                        kc == KeyEvent.KEYCODE_MENU ||
+                        kc == KeyEvent.KEYCODE_SOFT_RIGHT ||
                         (kc == KeyEvent.KEYCODE_DPAD_CENTER && native.isLongPress)
                     ) -> {
                         onEnterKey()

@@ -1,6 +1,5 @@
 package com.sidespot.ui
 
-import android.app.Activity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -41,7 +40,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -63,9 +61,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import coil.imageLoader
 import coil.request.ImageRequest
 import com.sidespot.viewmodel.PlayerViewModel
@@ -83,32 +78,6 @@ fun NowPlayingScreen(
 
     // Album art background with controls overlaid
     var showControls by remember { mutableStateOf(true) }
-
-    // Hide system navigation bar when viewing unblurred art
-    val activity = LocalContext.current as? Activity
-    // Use separate effects to avoid show/hide race: DisposableEffect's onDispose
-    // fires before the new effect body on key change, so the async show() can
-    // override the subsequent hide().
-    DisposableEffect(showControls) {
-        val window = activity?.window ?: return@DisposableEffect onDispose {}
-        val controller = WindowCompat.getInsetsController(window, window.decorView)
-        if (!showControls) {
-            controller.hide(WindowInsetsCompat.Type.navigationBars())
-            controller.systemBarsBehavior =
-                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        } else {
-            controller.show(WindowInsetsCompat.Type.navigationBars())
-        }
-        onDispose { }
-    }
-    // Restore nav bars when leaving the Now Playing screen
-    DisposableEffect(Unit) {
-        onDispose {
-            val window = activity?.window ?: return@onDispose
-            val controller = WindowCompat.getInsetsController(window, window.decorView)
-            controller.show(WindowInsetsCompat.Type.navigationBars())
-        }
-    }
 
     // Load album art bitmaps — blurred for background, sharp for full-screen view
     var blurredBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }

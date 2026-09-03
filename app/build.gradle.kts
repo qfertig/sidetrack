@@ -10,17 +10,18 @@ plugins {
 android {
     namespace = "com.sidespot"
     compileSdk = 34
+    ndkVersion = "26.1.10909125"
 
     defaultConfig {
         applicationId = "com.sidespot.app"
-        minSdk = 31
-        targetSdk = 31
+        minSdk = 30
+        targetSdk = 30
         versionCode = 12
         versionName = "0.4.1"
 
-        // Only target arm64 (Sidephone SP-01 is aarch64)
+        // Target both 64-bit and 32-bit ARM
         ndk {
-            abiFilters += "arm64-v8a"
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
     }
 
@@ -115,12 +116,33 @@ dependencies {
 // Task to build the native Rust library before the Android build
 tasks.register<Exec>("buildNativeRelease") {
     workingDir = file("${rootProject.projectDir}/native")
-    environment("ANDROID_NDK_HOME", "/opt/homebrew/share/android-commandlinetools/ndk/27.0.12077973")
-    environment("PATH", "${System.getenv("HOME")}/.cargo/bin:${System.getenv("PATH")}")
-    commandLine("cargo", "ndk", "-t", "arm64-v8a", "-o", "../app/src/main/jniLibs", "build", "--release")
+
+    // Add cargo to PATH (common locations)
+    val homeDir = System.getProperty("user.home")
+    val cargoPath = file("$homeDir/.cargo/bin").absolutePath
+    val currentPath = System.getenv("PATH") ?: ""
+    environment("PATH", "$cargoPath${if (currentPath.isNotEmpty()) File.pathSeparator else ""}$currentPath")
+
+    doFirst {
+        // Use ANDROID_NDK_HOME from environment if set, otherwise try to find it via the android extension
+        // Accessing this inside doFirst avoids configuration-phase failures if NDK is missing
+        val ndkDir = System.getenv("ANDROID_NDK_HOME") ?: android.ndkDirectory.absolutePath
+        if (ndkDir.isNullOrEmpty()) {
+            throw GradleException("Android NDK is not installed. Please install NDK version ${android.ndkVersion} via Android Studio SDK Manager.")
+        }
+        environment("ANDROID_NDK_HOME", ndkDir)
+    }
+
+    inputs.dir("${rootProject.projectDir}/native/src")
+    inputs.file("${rootProject.projectDir}/native/Cargo.toml")
+    outputs.file("${rootProject.projectDir}/app/src/main/jniLibs/armeabi-v7a/libsidespot.so")
+
+    val isWindows = System.getProperty("os.name").lowercase().contains("windows")
+    val cargoExe = if (isWindows) "cargo.exe" else "cargo"
+    commandLine(cargoExe, "ndk", "-t", "arm64-v8a", "-t", "armeabi-v7a", "-o", "../app/src/main/jniLibs", "build", "--release")
 }
 
 // Hook native build into the Android build pipeline
-tasks.matching { it.name.startsWith("merge") && it.name.endsWith("NativeLibs") }.configureEach {
+tasks.matching { it.name.startsWith("merge") && (it.name.endsWith("NativeLibs") || it.name.contains("JniLib")) }.configureEach {
     dependsOn("buildNativeRelease")
 }

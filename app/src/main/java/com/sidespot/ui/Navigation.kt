@@ -1,6 +1,5 @@
 package com.sidespot.ui
 
-import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -41,9 +40,6 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -55,6 +51,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.sidespot.MainActivity
 import com.sidespot.auth.AuthManager
+import com.sidespot.auth.ZeroconfState
 import com.sidespot.settings.SettingsManager
 import com.sidespot.viewmodel.LibraryViewModel
 import com.sidespot.viewmodel.PlayerViewModel
@@ -108,13 +105,11 @@ fun SidespotNavigation(
     val currentRoute = navBackStackEntry?.destination?.route
     val state by playerViewModel.uiState.collectAsState()
     val authState by authManager.state.collectAsState()
+    val zeroconfState by authManager.zeroconfState.collectAsState()
     val libraryViewModel: LibraryViewModel = viewModel()
     val searchViewModel: SearchViewModel = viewModel()
 
-    // Always use LIBRARY as start destination so the NavController's saved state
-    // is consistent across Activity recreation.  Login redirect is handled by the
-    // auth-lost LaunchedEffect below.
-    val startDestination = Routes.LIBRARY
+    val startDestination = if (authState.isAuthenticated) Routes.LIBRARY else Routes.LOGIN
     Log.i("SidespotAuth", "startDestination=$startDestination authState=$authState")
 
     // Now Playing is a full-screen overlay (not a NavHost destination) so it can
@@ -126,22 +121,6 @@ fun SidespotNavigation(
 
     val settingsState by settingsManager.state.collectAsState()
     val albumColors = rememberAlbumColors(state.albumArtUrl)
-    // Hide status bar while Now Playing overlay is visible
-    val activity = LocalContext.current as? Activity
-    DisposableEffect(showNowPlaying) {
-        val window = activity?.window ?: return@DisposableEffect onDispose {}
-        val controller = WindowCompat.getInsetsController(window, window.decorView)
-        if (showNowPlaying) {
-            controller.hide(WindowInsetsCompat.Type.statusBars())
-            controller.systemBarsBehavior =
-                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        } else {
-            controller.show(WindowInsetsCompat.Type.statusBars())
-        }
-        onDispose {
-            controller.show(WindowInsetsCompat.Type.statusBars())
-        }
-    }
 
     // Sync current route and wire Sundial keypad callbacks to MainActivity
     DisposableEffect(mainActivity, navController) {
@@ -205,11 +184,7 @@ fun SidespotNavigation(
                 authManager.logout()
                 return@LaunchedEffect
             }
-            val token = authManager.getValidAccessToken()
-            Log.i("SidespotAuth", "auto-connect: token=${if (token != null) "present" else "null"}")
-            if (token != null) {
-                playerViewModel.connect(token) { authManager.getValidAccessToken() }
-            }
+            playerViewModel.connect { authManager.connectNativeSession() }
         }
     }
 
@@ -220,7 +195,7 @@ fun SidespotNavigation(
     }
 
     // Navigate from login to library once connected, and load library data
-    LaunchedEffect(state.isConnected) {
+    LaunchedEffect(state.isConnected, currentRoute) {
         Log.i("SidespotAuth", "isConnected changed: ${state.isConnected} currentRoute=$currentRoute")
         if (state.isConnected) {
             libraryViewModel.initApi(authManager)
@@ -235,21 +210,19 @@ fun SidespotNavigation(
     }
 
     // If auth is lost (e.g. token refresh failed) or not yet signed in,
-    // navigate to login.  This also handles the fresh-install case where
-    // startDestination is LIBRARY but the user isn't authenticated yet.
-    // Conversely, if auth is gained while the player is already connected
-    // (e.g. sign-out → sign-in without the player disconnecting), navigate
-    // straight to library since the isConnected LaunchedEffect won't re-fire.
-    LaunchedEffect(authState.isAuthenticated) {
-        if (!authState.isAuthenticated && currentRoute != Routes.LOGIN) {
-            Log.i("SidespotAuth", "auth-lost: navigating to login, currentRoute=$currentRoute")
-            navController.navigate(Routes.LOGIN) {
-                popUpTo(0) { inclusive = true }
-            }
-        } else if (authState.isAuthenticated && state.isConnected && currentRoute == Routes.LOGIN) {
-            Log.i("SidespotAuth", "auth-gained: player already connected, navigating to library")
-            navController.navigate(Routes.LIBRARY) {
-                popUpTo(Routes.LOGIN) { inclusive = true }
+    // navigate to login.
+    LaunchedEffect(authState.isAuthenticated, currentRoute) {
+        if (currentRoute != null) {
+            if (!authState.isAuthenticated && currentRoute != Routes.LOGIN) {
+                Log.i("SidespotAuth", "auth-lost: navigating to login, currentRoute=$currentRoute")
+                navController.navigate(Routes.LOGIN) {
+                    popUpTo(0) { inclusive = true }
+                }
+            } else if (authState.isAuthenticated && state.isConnected && currentRoute == Routes.LOGIN) {
+                Log.i("SidespotAuth", "auth-gained: player already connected, navigating to library")
+                navController.navigate(Routes.LIBRARY) {
+                    popUpTo(Routes.LOGIN) { inclusive = true }
+                }
             }
         }
     }
@@ -258,6 +231,7 @@ fun SidespotNavigation(
         Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
             containerColor = MaterialTheme.colorScheme.background,
+            contentWindowInsets = WindowInsets(0),
             bottomBar = {
                 if (!hideChrome) {
                     Column(modifier = Modifier.fillMaxWidth()) {
@@ -296,8 +270,13 @@ fun SidespotNavigation(
                 ) {
                     composable(Routes.LOGIN) {
                         val context = LocalContext.current
+                        BackHandler(enabled = zeroconfState != ZeroconfState.Idle || authState.isLoading) {
+                            authManager.cancelSignIn()
+                            authManager.cancelZeroconfPairing()
+                        }
                         LoginScreen(
                             authState = authState,
+                            zeroconfState = zeroconfState,
                             onSignIn = {
                                 authManager.signIn { authUri ->
                                     try {
@@ -309,6 +288,12 @@ fun SidespotNavigation(
                                         )
                                     }
                                 }
+                            },
+                            onPairWithSpotifyApp = {
+                                authManager.startZeroconfPairing("Sidespot")
+                            },
+                            onCancelPairing = {
+                                authManager.cancelZeroconfPairing()
                             },
                         )
                     }
@@ -536,15 +521,12 @@ private fun BottomNavBar(
     NavigationBar(
         containerColor = MaterialTheme.colorScheme.surface,
         tonalElevation = 0.dp,
-        modifier = Modifier.height(72.dp),
+        modifier = Modifier.height(56.dp),
         windowInsets = WindowInsets(0),
     ) {
         bottomNavItems.forEach { item ->
             val selected = currentRoute == item.route
             NavigationBarItem(
-                // Not reachable by D-pad — pressing down at the end of a list must
-                // stay in the content.  The sundial's top-left button cycles tabs.
-                modifier = Modifier.focusProperties { canFocus = false },
                 selected = selected,
                 onClick = {
                     navController.navigate(item.route) {

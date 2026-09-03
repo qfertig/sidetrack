@@ -11,7 +11,7 @@ use jni::JNIEnv;
 use jni::objects::{JClass, JObject, JString};
 use jni::sys::{jboolean, jint, jstring, JNI_TRUE, JNI_FALSE};
 
-use crate::{library, metadata, player, session};
+use crate::{discovery, library, metadata, player, session};
 use crate::audio_sink;
 
 /// Helper: convert a JNI string to a Rust String.
@@ -76,6 +76,65 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_sessionDisconnect(
     _class: JClass,
 ) {
     block_on(session::disconnect());
+}
+
+/// Connect to Spotify with previously-stored Zeroconf credentials.
+/// Returns null on success, or an error message string on failure.
+#[unsafe(no_mangle)]
+pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_sessionConnectWithCredentials(
+    mut env: JNIEnv,
+    _class: JClass,
+    username: JString,
+    auth_data_base64: JString,
+    auth_type: jint,
+) -> jstring {
+    let u = jstring_to_string(&mut env, &username);
+    let a = jstring_to_string(&mut env, &auth_data_base64);
+
+    match block_on(session::connect_with_stored_credentials(u, a, auth_type)) {
+        Ok(()) => std::ptr::null_mut(),
+        Err(e) => {
+            let msg = format!("{e}");
+            log::error!("sessionConnectWithCredentials failed: {msg}");
+            string_to_jstring(&mut env, &msg)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Zeroconf (Spotify Connect) discovery
+// ---------------------------------------------------------------------------
+
+/// Start advertising this device for Zeroconf pairing under `deviceName`.
+/// Cancels any pairing already in progress.
+#[unsafe(no_mangle)]
+pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_discoveryStart(
+    mut env: JNIEnv,
+    _class: JClass,
+    device_name: JString,
+) {
+    let name = jstring_to_string(&mut env, &device_name);
+    discovery::start(name);
+}
+
+/// Stop advertising and abandon any pairing in progress.
+#[unsafe(no_mangle)]
+pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_discoveryStop(
+    _env: JNIEnv,
+    _class: JClass,
+) {
+    discovery::stop();
+}
+
+/// Poll the current Zeroconf pairing status. Returns a JSON string, e.g.
+/// `{"status":"pending"}`, `{"status":"connected","username":...,"authData":...,"authType":...}`,
+/// or `{"status":"error","message":...}`.
+#[unsafe(no_mangle)]
+pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_discoveryPollResult(
+    mut env: JNIEnv,
+    _class: JClass,
+) -> jstring {
+    string_to_jstring(&mut env, &discovery::poll_result_json())
 }
 
 /// Check if a session is currently connected.
