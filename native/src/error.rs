@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum SidespotError {
+pub enum SidetrackError {
     #[error("Session error: {0}")]
     Session(String),
 
@@ -25,4 +25,4 @@ pub enum SidespotError {
     NoPlayer,
 }
 
-pub type Result<T> = std::result::Result<T, SidespotError>;
+pub type Result<T> = std::result::Result<T, SidetrackError>;

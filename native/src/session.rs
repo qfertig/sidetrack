@@ -7,7 +7,7 @@ use librespot_core::Session;
 use tokio::runtime::Runtime;
 use tokio::sync::Mutex;
 
-use crate::error::{SidespotError, Result};
+use crate::error::{SidetrackError, Result};
 
 /// Global tokio runtime shared across the native library.
 static RUNTIME: OnceLock<Runtime> = OnceLock::new();
@@ -34,7 +34,7 @@ pub fn runtime() -> &'static Runtime {
         tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .enable_all()
-            .thread_name("sidespot-rt")
+            .thread_name("sidetrack-rt")
             .build()
             .expect("failed to create tokio runtime")
     })
@@ -72,7 +72,7 @@ pub async fn connect_with_credentials(credentials: Credentials) -> Result<()> {
     session
         .connect(credentials, true)
         .await
-        .map_err(|e| SidespotError::Session(format!("connect failed: {e}")))?;
+        .map_err(|e| SidetrackError::Session(format!("connect failed: {e}")))?;
 
     log::info!("Spotify session connected successfully");
 
@@ -95,11 +95,11 @@ pub async fn connect_with_stored_credentials(
 
     let auth_data = base64::engine::general_purpose::STANDARD
         .decode(auth_data_b64)
-        .map_err(|e| SidespotError::Session(format!("invalid stored credentials: {e}")))?;
+        .map_err(|e| SidetrackError::Session(format!("invalid stored credentials: {e}")))?;
     let auth_type = librespot_protocol::authentication::AuthenticationType::from_i32(
         auth_type_value,
     )
-    .ok_or_else(|| SidespotError::Session("invalid stored credentials: bad auth type".into()))?;
+    .ok_or_else(|| SidetrackError::Session("invalid stored credentials: bad auth type".into()))?;
 
     connect_with_credentials(Credentials {
         username: Some(username),
@@ -121,7 +121,7 @@ pub async fn disconnect() {
 /// Get a clone of the current session, if connected.
 pub async fn get_session() -> Result<Session> {
     let slot = session_slot().lock().await;
-    slot.clone().ok_or(SidespotError::NoSession)
+    slot.clone().ok_or(SidetrackError::NoSession)
 }
 
 /// Check if a session is currently active.

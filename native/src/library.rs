@@ -18,7 +18,7 @@ use librespot_protocol::playlist4_external::{
     op::Kind as OpKind,
 };
 
-use crate::error::{Result, SidespotError};
+use crate::error::{Result, SidetrackError};
 use crate::session;
 
 // ---------------------------------------------------------------------------
@@ -102,10 +102,10 @@ async fn collect_collection_items(
             .spclient()
             .collection_page(username, set, &token, COLLECTION_PAGE_LIMIT)
             .await
-            .map_err(|e| SidespotError::Player(format!("collection_page({set}) failed: {e}")))?;
+            .map_err(|e| SidetrackError::Player(format!("collection_page({set}) failed: {e}")))?;
 
         let page = PageResponse::parse_from_bytes(&resp).map_err(|e| {
-            SidespotError::Player(format!("parse page response({set}) failed: {e}"))
+            SidetrackError::Player(format!("parse page response({set}) failed: {e}"))
         })?;
 
         let got = page.items.len();
@@ -208,7 +208,7 @@ pub async fn add_to_liked_songs(track_uri: &str) -> Result<String> {
         .spclient()
         .collection_write(&username, "collection", &[item])
         .await
-        .map_err(|e| SidespotError::Player(format!("save track failed: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("save track failed: {e}")))?;
 
     ok_result()
 }
@@ -223,7 +223,7 @@ pub async fn save_album(album_uri: &str) -> Result<String> {
         .spclient()
         .collection_write(&username, "collection", &[item])
         .await
-        .map_err(|e| SidespotError::Player(format!("save album failed: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("save album failed: {e}")))?;
 
     ok_result()
 }
@@ -238,7 +238,7 @@ pub async fn save_show(show_uri: &str) -> Result<String> {
         .spclient()
         .collection_write(&username, "show", &[item])
         .await
-        .map_err(|e| SidespotError::Player(format!("save show failed: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("save show failed: {e}")))?;
 
     ok_result()
 }
@@ -253,7 +253,7 @@ pub async fn unsave_album(album_uri: &str) -> Result<String> {
         .spclient()
         .collection_write(&username, "collection", &[item])
         .await
-        .map_err(|e| SidespotError::Player(format!("unsave album failed: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("unsave album failed: {e}")))?;
 
     ok_result()
 }
@@ -268,7 +268,7 @@ pub async fn unsave_show(show_uri: &str) -> Result<String> {
         .spclient()
         .collection_write(&username, "show", &[item])
         .await
-        .map_err(|e| SidespotError::Player(format!("unsave show failed: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("unsave show failed: {e}")))?;
 
     ok_result()
 }
@@ -278,10 +278,10 @@ pub async fn add_to_playlist(playlist_uri: &str, track_uri: &str) -> Result<Stri
     let session = session::get_session().await?;
 
     let spotify_uri = SpotifyUri::from_uri(playlist_uri)
-        .map_err(|e| SidespotError::Player(format!("invalid playlist URI: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("invalid playlist URI: {e}")))?;
     let playlist_id = match &spotify_uri {
         SpotifyUri::Playlist { id, .. } => id.clone(),
-        _ => return Err(SidespotError::Player("not a playlist URI".into())),
+        _ => return Err(SidetrackError::Player("not a playlist URI".into())),
     };
     let playlist_base62 = playlist_id.to_base62();
 
@@ -289,10 +289,10 @@ pub async fn add_to_playlist(playlist_uri: &str, track_uri: &str) -> Result<Stri
         .spclient()
         .get_playlist(&playlist_id)
         .await
-        .map_err(|e| SidespotError::Player(format!("get_playlist failed: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("get_playlist failed: {e}")))?;
 
     let content = SelectedListContent::parse_from_bytes(&playlist_bytes)
-        .map_err(|e| SidespotError::Player(format!("parse playlist failed: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("parse playlist failed: {e}")))?;
 
     let revision = content.revision().to_vec();
 
@@ -319,7 +319,7 @@ pub async fn add_to_playlist(playlist_uri: &str, track_uri: &str) -> Result<Stri
         .spclient()
         .playlist_modify(&playlist_base62, &changes)
         .await
-        .map_err(|e| SidespotError::Player(format!("playlist_modify failed: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("playlist_modify failed: {e}")))?;
 
     ok_result()
 }
@@ -333,10 +333,10 @@ pub async fn create_playlist(name: &str) -> Result<String> {
         .spclient()
         .get_rootlist(0, None)
         .await
-        .map_err(|e| SidespotError::Player(format!("get_rootlist failed: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("get_rootlist failed: {e}")))?;
 
     let rootlist = SelectedListContent::parse_from_bytes(&rootlist_bytes)
-        .map_err(|e| SidespotError::Player(format!("parse rootlist failed: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("parse rootlist failed: {e}")))?;
 
     let revision = rootlist.revision().to_vec();
 
@@ -381,7 +381,7 @@ pub async fn create_playlist(name: &str) -> Result<String> {
         .spclient()
         .rootlist_modify(&changes)
         .await
-        .map_err(|e| SidespotError::Player(format!("rootlist_modify failed: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("rootlist_modify failed: {e}")))?;
 
     let new_uri = if let Ok(reply) = CreateListReply::parse_from_bytes(&response) {
         Some(reply.uri().to_string())
@@ -406,10 +406,10 @@ pub async fn save_playlist(playlist_uri: &str) -> Result<String> {
         .spclient()
         .get_rootlist(0, None)
         .await
-        .map_err(|e| SidespotError::Player(format!("get_rootlist failed: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("get_rootlist failed: {e}")))?;
 
     let rootlist = SelectedListContent::parse_from_bytes(&rootlist_bytes)
-        .map_err(|e| SidespotError::Player(format!("parse rootlist failed: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("parse rootlist failed: {e}")))?;
 
     let revision = rootlist.revision().to_vec();
 
@@ -436,7 +436,7 @@ pub async fn save_playlist(playlist_uri: &str) -> Result<String> {
         .spclient()
         .rootlist_modify(&changes)
         .await
-        .map_err(|e| SidespotError::Player(format!("rootlist_modify failed: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("rootlist_modify failed: {e}")))?;
 
     ok_result()
 }
@@ -451,7 +451,7 @@ pub async fn unsave_playlist(playlist_uri: &str) -> Result<String> {
         .spclient()
         .collection_write(&username, "rootlist", &[item])
         .await
-        .map_err(|e| SidespotError::Player(format!("unsave playlist failed: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("unsave playlist failed: {e}")))?;
 
     ok_result()
 }
@@ -466,7 +466,7 @@ pub async fn unfollow_artist(artist_uri: &str) -> Result<String> {
         .spclient()
         .collection_write(&username, ARTIST_COLLECTION_SET, &[item])
         .await
-        .map_err(|e| SidespotError::Player(format!("unfollow artist failed: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("unfollow artist failed: {e}")))?;
 
     ok_result()
 }
@@ -481,7 +481,7 @@ pub async fn follow_artist(artist_uri: &str) -> Result<String> {
         .spclient()
         .collection_write(&username, ARTIST_COLLECTION_SET, &[item])
         .await
-        .map_err(|e| SidespotError::Player(format!("follow artist failed: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("follow artist failed: {e}")))?;
 
     ok_result()
 }
@@ -585,10 +585,10 @@ pub async fn get_saved_albums() -> Result<String> {
         .spclient()
         .collection_page(&username, "collection", "", 50)
         .await
-        .map_err(|e| SidespotError::Player(format!("get saved albums failed: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("get saved albums failed: {e}")))?;
 
     let page = librespot_protocol::collection2v2::PageResponse::parse_from_bytes(&resp)
-        .map_err(|e| SidespotError::Player(format!("parse page response failed: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("parse page response failed: {e}")))?;
 
     // Filter to album URIs only and fetch metadata
     let album_items: Vec<_> = page.items.iter()
@@ -643,10 +643,10 @@ pub async fn get_saved_shows() -> Result<String> {
         .spclient()
         .collection_page(&username, "show", "", 50)
         .await
-        .map_err(|e| SidespotError::Player(format!("get saved shows failed: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("get saved shows failed: {e}")))?;
 
     let page = librespot_protocol::collection2v2::PageResponse::parse_from_bytes(&resp)
-        .map_err(|e| SidespotError::Player(format!("parse page response failed: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("parse page response failed: {e}")))?;
 
     // Fetch show metadata for each item
     let mut shows = Vec::new();
@@ -681,11 +681,11 @@ pub async fn get_saved_shows() -> Result<String> {
 pub async fn get_show_episodes(show_uri: &str) -> Result<String> {
     let session = session::get_session().await?;
     let uri = SpotifyUri::from_uri(show_uri)
-        .map_err(|e| SidespotError::Player(format!("invalid show URI: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("invalid show URI: {e}")))?;
 
     let show = Show::get(&session, &uri)
         .await
-        .map_err(|e| SidespotError::Player(format!("failed to get show: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("failed to get show: {e}")))?;
 
     let mut episodes = Vec::new();
     for chunk in show.episodes.chunks(10) {

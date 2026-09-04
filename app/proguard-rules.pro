@@ -1,10 +1,10 @@
-# sidespot ProGuard rules
+# sidetrack ProGuard rules
 
 # Keep JNI bridge methods (called from native code)
--keep class com.sidespot.bridge.NativeBridge { *; }
+-keep class com.sidetrack.bridge.NativeBridge { *; }
 
 # Keep audio callback (called from native code via JNI)
--keep class com.sidespot.audio.AudioCallback { *; }
+-keep class com.sidetrack.audio.AudioCallback { *; }
 
 # Keep kotlinx.serialization
 -keepattributes *Annotation*, InnerClasses
@@ -17,11 +17,11 @@
     kotlinx.serialization.KSerializer serializer(...);
 }
 
--keep,includedescriptorclasses class com.sidespot.bridge.**$$serializer { *; }
--keepclassmembers class com.sidespot.bridge.** {
+-keep,includedescriptorclasses class com.sidetrack.bridge.**$$serializer { *; }
+-keepclassmembers class com.sidetrack.bridge.** {
     *** Companion;
 }
--keepclasseswithmembers class com.sidespot.bridge.** {
+-keepclasseswithmembers class com.sidetrack.bridge.** {
     kotlinx.serialization.KSerializer serializer(...);
 }
 

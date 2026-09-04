@@ -10,7 +10,7 @@ use librespot_core::Session;
 use librespot_metadata::{Album, Artist, Metadata, Playlist, Track};
 use serde::{Deserialize, Serialize};
 
-use crate::error::{Result, SidespotError};
+use crate::error::{Result, SidetrackError};
 use crate::session;
 
 // ---------------------------------------------------------------------------
@@ -167,11 +167,11 @@ fn image_url_from_images(images: &librespot_metadata::image::Images) -> Option<S
 pub async fn get_track_info(uri: &str) -> Result<String> {
     let session = session::get_session().await?;
     let spotify_uri = SpotifyUri::from_uri(uri)
-        .map_err(|e| SidespotError::Player(format!("invalid URI '{uri}': {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("invalid URI '{uri}': {e}")))?;
 
     let track = Track::get(&session, &spotify_uri)
         .await
-        .map_err(|e| SidespotError::Player(format!("failed to get track metadata: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("failed to get track metadata: {e}")))?;
 
     let artists: Vec<ArtistSummary> = track
         .artists
@@ -283,14 +283,14 @@ async fn fetch_artist_albums(session: &Session, uris: &[SpotifyUri]) -> Vec<Arti
 pub async fn get_artist_info(uri: &str) -> Result<String> {
     let session = session::get_session().await?;
     let spotify_uri = SpotifyUri::from_uri(uri)
-        .map_err(|e| SidespotError::Player(format!("invalid URI '{uri}': {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("invalid URI '{uri}': {e}")))?;
     let SpotifyUri::Artist { .. } = spotify_uri else {
-        return Err(SidespotError::Player(format!("not an artist URI: {uri}")));
+        return Err(SidetrackError::Player(format!("not an artist URI: {uri}")));
     };
 
     let artist = Artist::get(&session, &spotify_uri)
         .await
-        .map_err(|e| SidespotError::Player(format!("failed to get artist metadata: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("failed to get artist metadata: {e}")))?;
 
     let image_url = image_url_from_images(&artist.portraits)
         .or_else(|| image_url_from_images(&artist.portrait_group));
@@ -340,11 +340,11 @@ pub async fn get_artist_info(uri: &str) -> Result<String> {
 pub async fn get_album_info(uri: &str) -> Result<String> {
     let session = session::get_session().await?;
     let spotify_uri = SpotifyUri::from_uri(uri)
-        .map_err(|e| SidespotError::Player(format!("invalid URI '{uri}': {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("invalid URI '{uri}': {e}")))?;
 
     let album = Album::get(&session, &spotify_uri)
         .await
-        .map_err(|e| SidespotError::Player(format!("failed to get album metadata: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("failed to get album metadata: {e}")))?;
 
     let album_art_url = image_url_from_images(&album.covers);
     let album_artists: Vec<ArtistSummary> = album
@@ -423,11 +423,11 @@ const MAX_LIST_PAGES: usize = 100;
 pub async fn get_playlist_info(uri: &str) -> Result<String> {
     let session = session::get_session().await?;
     let spotify_uri = SpotifyUri::from_uri(uri)
-        .map_err(|e| SidespotError::Player(format!("invalid URI '{uri}': {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("invalid URI '{uri}': {e}")))?;
 
     let playlist = Playlist::get(&session, &spotify_uri)
         .await
-        .map_err(|e| SidespotError::Player(format!("failed to get playlist metadata: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("failed to get playlist metadata: {e}")))?;
 
     let mut track_uris: Vec<String> = playlist.tracks().map(|u| u.to_uri()).collect();
     let expected = playlist.length.max(0) as usize;
@@ -439,7 +439,7 @@ pub async fn get_playlist_info(uri: &str) -> Result<String> {
         use protobuf::Message;
 
         let SpotifyUri::Playlist { id, .. } = &spotify_uri else {
-            return Err(SidespotError::Player(format!("not a playlist URI: {uri}")));
+            return Err(SidetrackError::Player(format!("not a playlist URI: {uri}")));
         };
         let id62 = id.to_base62();
 
@@ -529,10 +529,10 @@ pub async fn get_user_playlists() -> Result<String> {
             .spclient()
             .get_rootlist(seen, Some(LIST_PAGE_SIZE))
             .await
-            .map_err(|e| SidespotError::Player(format!("failed to get rootlist: {e}")))?;
+            .map_err(|e| SidetrackError::Player(format!("failed to get rootlist: {e}")))?;
 
         let content = SelectedListContent::parse_from_bytes(&response)
-            .map_err(|e| SidespotError::Player(format!("failed to parse rootlist: {e}")))?;
+            .map_err(|e| SidetrackError::Player(format!("failed to parse rootlist: {e}")))?;
 
         let items = &content.contents.items;
         let meta_items = &content.contents.meta_items;
@@ -599,7 +599,7 @@ pub async fn get_liked_songs() -> Result<String> {
         .spclient()
         .get_context(&context_uri)
         .await
-        .map_err(|e| SidespotError::Player(format!("failed to get liked songs: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("failed to get liked songs: {e}")))?;
 
     let mut track_uris = Vec::new();
     for page in context.pages.iter() {
@@ -638,7 +638,7 @@ pub async fn get_autoplay_tracks(context_uri: &str, recent_track_uris: &[String]
         .spclient()
         .get_autoplay_context(&request)
         .await
-        .map_err(|e| SidespotError::Player(format!("failed to get autoplay context: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("failed to get autoplay context: {e}")))?;
 
     let mut track_uris = Vec::new();
     for page in context.pages.iter() {
@@ -730,18 +730,18 @@ async fn pathfinder_search(
         .spclient()
         .request_with_options(&Method::GET, &endpoint, Some(headers), None, &options)
         .await
-        .map_err(|e| SidespotError::Player(format!("pathfinder request failed: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("pathfinder request failed: {e}")))?;
 
     let val: serde_json::Value = serde_json::from_slice(&body)
-        .map_err(|e| SidespotError::Player(format!("failed to parse pathfinder response: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("failed to parse pathfinder response: {e}")))?;
 
     // GraphQL reports trouble in-band: a rotated hash comes back as HTTP 200
     // carrying `errors` and no data, which must not read as "no results".
     if let Some(errors) = val.get("errors") {
-        return Err(SidespotError::Player(format!("pathfinder error: {errors}")));
+        return Err(SidetrackError::Player(format!("pathfinder error: {errors}")));
     }
     if val.pointer("/data/searchV2").is_none() {
-        return Err(SidespotError::Player("pathfinder returned no searchV2 data".into()));
+        return Err(SidetrackError::Player("pathfinder returned no searchV2 data".into()));
     }
 
     Ok(val)
@@ -973,7 +973,7 @@ async fn context_search(session: &Session, query: &str) -> Result<String> {
         .spclient()
         .get_context(&context_uri)
         .await
-        .map_err(|e| SidespotError::Player(format!("search failed: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("search failed: {e}")))?;
 
     let mut track_uris = Vec::new();
     for page in context.pages.iter() {

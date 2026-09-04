@@ -61,7 +61,7 @@ pub fn start(device_name: String) {
     *shutdown_slot().lock().unwrap() = Some(tx);
 
     session::runtime().spawn(async move {
-        let device_id = format!("sidespot-{}", uuid_v4());
+        let device_id = format!("sidetrack-{}", uuid_v4());
 
         let discovery = match Builder::new(device_id, ZEROCONF_CLIENT_ID.to_string())
             .name(device_name)

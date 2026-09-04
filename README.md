@@ -1,8 +1,12 @@
-# Sidespot
+# Sidetrack
 
-A lightweight, GMS-free Spotify client for the [Sidephone SP-01](https://sidephone.com) and similar small-screen Android devices.
+A lightweight, GMS-free Spotify client built for D-pad-only feature phones and flip phones running Android -- no touchscreen required.
 
-Built on [librespot](https://github.com/librespot-org/librespot) (Rust) with a minimal [Jetpack Compose](https://developer.android.com/jetpack/compose) UI optimized for 480x640 displays.
+Built on [librespot](https://github.com/librespot-org/librespot) (Rust) with a minimal [Jetpack Compose](https://developer.android.com/jetpack/compose) UI.
+
+## Credit
+
+Sidetrack is a fork of [Sidespot](https://github.com/jtaekman/sidespot) by [@jtaekman](https://github.com/jtaekman), originally built for the [Sidephone SP-01](https://sidephone.com) and its rotary Sundial keypad. Sidetrack retargets that same librespot/Compose foundation at D-pad-and-keypad flip and feature phones instead -- none of this would exist without jtaekman's original work on the JNI bridge, the Compose UI, and the Spotify integration itself.
 
 ## Screenshots
 
@@ -17,8 +21,10 @@ Built on [librespot](https://github.com/librespot-org/librespot) (Rust) with a m
 ## Features
 
 - **No Google Play Services required** -- runs on degoogled and minimal Android devices
-- **Optimized for small screens** -- dark theme, 48dp+ touch targets, designed for 2.8" displays
+- **Optimized for small screens** -- dark theme, designed for tiny flip-phone displays
+- **D-pad only** -- every screen, including seeking and shuffle/repeat, is reachable without a touchscreen
 - **Full playback** -- play, pause, seek, skip, shuffle, repeat, queue management
+- **Spotify Connect pairing** -- pairs with the official Spotify app (phone or desktop) over Wi-Fi via Zeroconf, no browser or manual login needed
 - **Library browsing** -- playlists, liked songs, saved albums, followed artists, saved podcasts, sorted by recently played with album art thumbnails
 - **Library management** -- save/remove albums, playlists, and podcasts directly from the app; add tracks to liked songs or any writable playlist; create new playlists
 - **Search** -- find tracks, artists, albums, playlists, and podcasts
@@ -28,26 +34,45 @@ Built on [librespot](https://github.com/librespot-org/librespot) (Rust) with a m
 - **Dynamic theming** -- album art colors tint the entire UI with smooth animated transitions
 - **Hardware volume keys** -- physical button integration
 - **Audio focus** -- pauses for calls, ducks for notifications, resumes automatically
-- **Play history** -- dedicated History view combining local Sidespot listening history with your official Spotify history (note: playback through Sidespot does not appear in your official Spotify history)
+- **Play history** -- dedicated History view combining local listening history with your official Spotify history (note: playback through Sidetrack does not appear in your official Spotify history)
 - **E-ink display mode** -- high-contrast monochrome UI optimized for e-ink screens
-- **Settings** -- audio quality (160/320 kbps), volume normalization, gapless playback, autoplay, e-ink mode
+- **Settings** -- audio quality (160/320 kbps), volume normalization, gapless playback, autoplay, e-ink mode, key mapping
 
-## Sidephone Only Features
+## Supported Devices
 
-When a Sundial keypad is connected, sidespot enables full hardware navigation -- no touchscreen needed (with the exception of shuffle/loop buttons in Now Playing).
+Confirmed working:
+
+- **TCL Flip 2 / Gflip6** (tested on this fork)
+
+Expected to work -- same class of D-pad/keypad-only Android hardware, not yet confirmed by us:
+
+- Qin F22 Pro
+- Mode 1 Retro II
+- Cat S22 Flip
+- Sonim XP3 Plus
+- Kyocera DuraXV Extreme
+
+Different OEMs map their physical soft keys to different Android keycodes, so out-of-the-box behavior can vary by device. **Settings > Key Mapping** lets you press each physical button and record what it should do, so the app can adapt to whatever your specific hardware sends instead of assuming everyone matches the TCL layout. If you get Sidetrack running on hardware not listed here, open an issue (or a PR) with what worked.
+
+## Controls
+
+D-pad navigation, no touchscreen needed. Defaults below -- remap any of them in **Settings > Key Mapping**.
 
 | Control | Action |
 |---------|--------|
-| **Dial up / down** | Scroll lists; adjust volume on Now Playing |
-| **Dial left** | Previous track |
-| **Dial right** | Next track |
-| **Center glass** | Select focused item in lists; Play/Pause on Now Playing; long-hold for row actions |
-| **Top-left (←)** | Cycle tabs (Queue / Library / Search) |
-| **Top-right (→)** | Navigate back / dismiss menus |
-| **Bottom-left (Tab)** | Show / hide Now Playing |
-| **Bottom-right (Enter)** | Open row actions (add to queue, liked songs, playlist) |
+| **D-pad up / down** | Scroll lists and menus |
+| **D-pad left / right** | Focus traversal in lists; skip previous/next on Now Playing |
+| **D-pad center** | Select focused item; Play/Pause on Now Playing; long-press for row actions |
+| **D-pad up on Now Playing** | Enter seek mode (left/right then scrub instead of skipping) |
+| **D-pad down on Now Playing** | Exit seek mode, back to normal skip controls |
+| **Long-press D-pad left / right on Now Playing** | Toggle shuffle / cycle repeat |
+| **Soft-left key / \*** | Cycle tabs (Queue / Library / Search) |
+| **Soft-right key / Tab / #** | Show / hide Now Playing |
+| **Menu key** | Open row actions (add to queue, liked songs, playlist) |
+| **Volume up / down** | Always adjusts volume, on any screen |
+| **Media play/pause/next/previous keys** | Control playback globally |
 
-Additional adaptations when a Sundial is detected:
+Additional adaptations for D-pad use:
 - **Fill-style focus indicators** on all interactive items
 - **Stacked Play All / Shuffle buttons** in playlist and album views for easy D-pad access
 - **Auto-focus on first content row** when entering any list view
@@ -62,10 +87,10 @@ Additional adaptations when a Sundial is detected:
 
 ### From Releases
 
-Download the latest APK from [Releases](https://github.com/jtaekman/sidespot/releases) and sideload it onto your device:
+Download the latest APK from [Releases](https://github.com/qfertig/sidetrack/releases) and sideload it onto your device:
 
 ```sh
-adb install sidespot-v*.apk
+adb install sidetrack-v*.apk
 ```
 
 ### From Obtainium
@@ -73,28 +98,8 @@ adb install sidespot-v*.apk
 To track updates automatically via [Obtainium](https://github.com/ImranR98/Obtainium):
 
 1. Open Obtainium
-2. Add app -> enter the repository URL: `https://github.com/jtaekman/sidespot`
+2. Add app -> enter the repository URL: `https://github.com/qfertig/sidetrack`
 3. Obtainium will check for new releases and notify you when updates are available
-
-#### Switching from the Codeberg source
-
-Sidespot used to be hosted on Codeberg. That repository is deprecated and will
-not publish new releases, so if you added Sidespot to Obtainium before the move,
-you need to re-point it at GitHub — otherwise updates will silently stop.
-
-Obtainium keys each app to the source URL it was added with, so this is a
-remove-and-re-add rather than an in-place edit:
-
-1. Open Obtainium and select **Sidespot** (source: `codeberg.org/jtaekman/sidespot`)
-2. Remove it from your app list. This only stops Obtainium tracking it -- it does
-   **not** uninstall Sidespot from your device
-3. Add app -> enter the new URL: `https://github.com/jtaekman/sidespot`
-4. Obtainium will pick up the copy already installed on your device and notify you
-   on the next release
-
-You do not need to uninstall or reinstall anything. GitHub releases are signed
-with the same key as the Codeberg ones, so future updates install straight over
-your existing app and your login and settings are preserved.
 
 ## Build from Source
 
@@ -112,8 +117,8 @@ your existing app and your login and settings are preserved.
 rustup target add aarch64-linux-android armv7-linux-androideabi
 
 # Clone with submodules (librespot)
-git clone --recurse-submodules https://github.com/jtaekman/sidespot.git
-cd sidespot
+git clone --recurse-submodules https://github.com/qfertig/sidetrack.git
+cd sidetrack
 ```
 
 ### Build & Install
@@ -173,7 +178,7 @@ keyPassword=your-key-password
 
 ## Disclaimer
 
-Sidespot is not affiliated with or endorsed by Spotify. It uses a reverse-engineered protocol implementation ([librespot](https://github.com/librespot-org/librespot)). Use at your own risk. A Spotify Premium subscription is required.
+Sidetrack is not affiliated with or endorsed by Spotify. It uses a reverse-engineered protocol implementation ([librespot](https://github.com/librespot-org/librespot)). Use at your own risk. A Spotify Premium subscription is required.
 
 ## License
 

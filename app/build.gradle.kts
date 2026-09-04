@@ -8,12 +8,12 @@ plugins {
 }
 
 android {
-    namespace = "com.sidespot"
+    namespace = "com.sidetrack"
     compileSdk = 34
     ndkVersion = "26.1.10909125"
 
     defaultConfig {
-        applicationId = "com.sidespot.app"
+        applicationId = "com.sidetrack.app"
         minSdk = 30
         targetSdk = 30
         versionCode = 12
@@ -135,7 +135,7 @@ tasks.register<Exec>("buildNativeRelease") {
 
     inputs.dir("${rootProject.projectDir}/native/src")
     inputs.file("${rootProject.projectDir}/native/Cargo.toml")
-    outputs.file("${rootProject.projectDir}/app/src/main/jniLibs/armeabi-v7a/libsidespot.so")
+    outputs.file("${rootProject.projectDir}/app/src/main/jniLibs/armeabi-v7a/libsidetrack.so")
 
     val isWindows = System.getProperty("os.name").lowercase().contains("windows")
     val cargoExe = if (isWindows) "cargo.exe" else "cargo"

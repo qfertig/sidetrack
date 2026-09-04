@@ -1,11 +1,11 @@
 [package]
-name = "sidespot-native"
+name = "sidetrack-native"
 version = "0.1.0"
 edition = "2021"
-description = "Native Rust library for sidespot - librespot JNI bridge"
+description = "Native Rust library for sidetrack - librespot JNI bridge"
 
 [lib]
-name = "sidespot"
+name = "sidetrack"
 crate-type = ["cdylib"]
 
 [dependencies]
