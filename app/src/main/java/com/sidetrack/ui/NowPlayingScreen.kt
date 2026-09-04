@@ -4,7 +4,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -326,9 +325,9 @@ private fun NowPlayingControls(
         // Push everything else to the bottom
         Spacer(modifier = Modifier.weight(1f))
 
-        // Track info — the screen has room to spare here, so the title gets to
-        // be the centerpiece; artist and album share one scrolling line below it
-        // (a fixed two-line stack either squished each field or cut names off).
+        // Track info — this screen has room to spare, so title/artist/album just
+        // stack vertically instead of scrolling (marquee is for the cramped
+        // mini-player bar, not here).
         Text(
             text = state.trackTitle.ifEmpty { "No track loaded" },
             style = MaterialTheme.typography.headlineSmall,
@@ -341,35 +340,25 @@ private fun NowPlayingControls(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .basicMarquee(),
-            horizontalArrangement = Arrangement.Center,
-        ) {
+        Text(
+            text = state.artistName.ifEmpty { "---" },
+            style = MaterialTheme.typography.bodyLarge,
+            color = controlColorDim,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+
+        if (state.albumName.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = state.artistName.ifEmpty { "---" },
-                style = MaterialTheme.typography.bodyLarge,
-                color = controlColorDim,
+                text = state.albumName,
+                style = MaterialTheme.typography.bodyMedium,
+                color = controlColorFaint,
+                textAlign = TextAlign.Center,
                 maxLines = 1,
-                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
             )
-            if (state.albumName.isNotEmpty()) {
-                Text(
-                    text = "  •  ",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = controlColorFaint,
-                    maxLines = 1,
-                    softWrap = false,
-                )
-                Text(
-                    text = state.albumName,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = controlColorFaint,
-                    maxLines = 1,
-                    softWrap = false,
-                )
-            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))

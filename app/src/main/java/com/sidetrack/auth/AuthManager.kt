@@ -40,7 +40,7 @@ data class AuthState(
     val version: Int = 0,
 )
 
-/** UI state for the Zeroconf ("Pair with Spotify app") sign-in flow. */
+/** UI state for the Zeroconf ("Sign In with Spotify App") sign-in flow. */
 sealed class ZeroconfState {
     object Idle : ZeroconfState()
     data class Pending(val deviceName: String) : ZeroconfState()

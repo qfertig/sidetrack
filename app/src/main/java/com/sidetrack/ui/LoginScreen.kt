@@ -127,8 +127,8 @@ fun LoginScreen(
 
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        // Button 2: Pair with the Spotify app on another phone (Zeroconf,
-                        // same network — no typing on this device's keypad required)
+                        // Button 2: sign in via the Spotify app on another phone/desktop
+                        // (Zeroconf, same network — no typing on this device's keypad required)
                         DpadButton(
                             onClick = onPairWithSpotifyApp,
                             enabled = !authState.isLoading,
@@ -138,7 +138,7 @@ fun LoginScreen(
                                 .height(44.dp),
                         ) { isFocused ->
                             Text(
-                                text = "Pair with Spotify App",
+                                text = "Sign In with Spotify App",
                                 color = if (isFocused) Color.Black else Color(0xFF1DB954),
                                 fontWeight = if (isFocused) FontWeight.Bold else FontWeight.Medium,
                                 fontSize = 14.sp,
@@ -240,7 +240,7 @@ private fun PairingScreen(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(
-                text = "Pair with Spotify App",
+                text = "Sign In with Spotify App",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF1DB954),
@@ -260,8 +260,9 @@ private fun PairingScreen(
                 }
                 else -> {
                     Text(
-                        text = "Open Spotify on your phone, tap the Devices icon, " +
-                            "and pick this device from the list.",
+                        text = "Open Spotify on your phone, tap the Devices icon, and pick " +
+                            "this device from the list — that signs you in here, no other " +
+                            "setup needed.",
                         fontSize = 12.sp,
                         textAlign = TextAlign.Center,
                         lineHeight = 16.sp,
