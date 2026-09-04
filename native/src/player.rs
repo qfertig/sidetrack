@@ -7,7 +7,7 @@ use librespot_playback::player::{Player, PlayerEvent};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, mpsc};
 
-use crate::error::{SidespotError, Result};
+use crate::error::{SidetrackError, Result};
 use crate::session;
 
 /// Global player instance.
@@ -38,7 +38,7 @@ pub(crate) fn config_slot() -> &'static StdMutex<AppConfig> {
 /// Update the stored app config from a JSON string.
 pub fn set_config(json: &str) -> Result<()> {
     let new_config: AppConfig = serde_json::from_str(json)
-        .map_err(|e| SidespotError::Player(format!("invalid config JSON: {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("invalid config JSON: {e}")))?;
     let mut slot = config_slot().lock().unwrap();
     *slot = new_config;
     log::info!("Config updated: {:?}", *slot);
@@ -139,7 +139,7 @@ pub async fn create_player() -> Result<()> {
     // Create a new SoftMixer and store it (replaces previous on recreate)
     let mixer = Arc::new(
         SoftMixer::open(MixerConfig::default())
-            .map_err(|e| SidespotError::Player(format!("failed to create mixer: {e}")))?,
+            .map_err(|e| SidetrackError::Player(format!("failed to create mixer: {e}")))?,
     );
     *mixer_slot().lock().unwrap() = mixer.clone();
     let soft_volume = mixer.get_soft_volume();
@@ -224,10 +224,10 @@ pub async fn create_player() -> Result<()> {
 /// Load and play a track by Spotify URI (e.g., "spotify:track:4uLU6hMCjMI75M1A2tKUQC").
 pub async fn load_track(uri: &str, start_playing: bool, position_ms: u32) -> Result<()> {
     let slot = player_slot().lock().await;
-    let player = slot.as_ref().ok_or(SidespotError::NoPlayer)?;
+    let player = slot.as_ref().ok_or(SidetrackError::NoPlayer)?;
 
     let spotify_uri = SpotifyUri::from_uri(uri)
-        .map_err(|e| SidespotError::Player(format!("invalid URI '{uri}': {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("invalid URI '{uri}': {e}")))?;
 
     player.load(spotify_uri, start_playing, position_ms);
     log::info!("Loaded track: {uri}, start_playing={start_playing}, position_ms={position_ms}");
@@ -237,10 +237,10 @@ pub async fn load_track(uri: &str, start_playing: bool, position_ms: u32) -> Res
 /// Preload a track so it starts instantly when loaded next.
 pub async fn preload_track(uri: &str) -> Result<()> {
     let slot = player_slot().lock().await;
-    let player = slot.as_ref().ok_or(SidespotError::NoPlayer)?;
+    let player = slot.as_ref().ok_or(SidetrackError::NoPlayer)?;
 
     let spotify_uri = SpotifyUri::from_uri(uri)
-        .map_err(|e| SidespotError::Player(format!("invalid preload URI '{uri}': {e}")))?;
+        .map_err(|e| SidetrackError::Player(format!("invalid preload URI '{uri}': {e}")))?;
 
     player.preload(spotify_uri);
     log::info!("Preloading track: {uri}");
@@ -250,7 +250,7 @@ pub async fn preload_track(uri: &str) -> Result<()> {
 /// Resume playback.
 pub async fn play() -> Result<()> {
     let slot = player_slot().lock().await;
-    let player = slot.as_ref().ok_or(SidespotError::NoPlayer)?;
+    let player = slot.as_ref().ok_or(SidetrackError::NoPlayer)?;
     player.play();
     Ok(())
 }
@@ -258,7 +258,7 @@ pub async fn play() -> Result<()> {
 /// Pause playback.
 pub async fn pause() -> Result<()> {
     let slot = player_slot().lock().await;
-    let player = slot.as_ref().ok_or(SidespotError::NoPlayer)?;
+    let player = slot.as_ref().ok_or(SidetrackError::NoPlayer)?;
     player.pause();
     Ok(())
 }
@@ -266,7 +266,7 @@ pub async fn pause() -> Result<()> {
 /// Seek to position in milliseconds.
 pub async fn seek(position_ms: u32) -> Result<()> {
     let slot = player_slot().lock().await;
-    let player = slot.as_ref().ok_or(SidespotError::NoPlayer)?;
+    let player = slot.as_ref().ok_or(SidetrackError::NoPlayer)?;
     player.seek(position_ms);
     Ok(())
 }
@@ -274,7 +274,7 @@ pub async fn seek(position_ms: u32) -> Result<()> {
 /// Stop playback.
 pub async fn stop() -> Result<()> {
     let slot = player_slot().lock().await;
-    let player = slot.as_ref().ok_or(SidespotError::NoPlayer)?;
+    let player = slot.as_ref().ok_or(SidetrackError::NoPlayer)?;
     player.stop();
     Ok(())
 }

@@ -15,5 +15,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "sidespot"
+rootProject.name = "sidetrack"
 include(":app")

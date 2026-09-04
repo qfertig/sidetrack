@@ -1,7 +1,7 @@
 //! JNI bridge functions exposed to Kotlin.
 //!
 //! All functions follow the JNI naming convention:
-//!   Java_com_sidespot_bridge_NativeBridge_<methodName>
+//!   Java_com_sidetrack_bridge_NativeBridge_<methodName>
 //!
 //! Complex return values are serialized as JSON strings.
 
@@ -11,7 +11,7 @@ use jni::JNIEnv;
 use jni::objects::{JClass, JObject, JString};
 use jni::sys::{jboolean, jint, jstring, JNI_TRUE, JNI_FALSE};
 
-use crate::{library, metadata, player, session};
+use crate::{discovery, library, metadata, player, session};
 use crate::audio_sink;
 
 /// Helper: convert a JNI string to a Rust String.
@@ -40,7 +40,7 @@ fn block_on<F: std::future::Future>(f: F) -> F::Output {
 /// Set the temporary directory for audio file downloads.
 /// Must be called before sessionConnect.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_setTmpDir(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_setTmpDir(
     mut env: JNIEnv,
     _class: JClass,
     path: JString,
@@ -52,7 +52,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_setTmpDir(
 /// Connect to Spotify with an OAuth access token.
 /// Returns null on success, or an error message string on failure.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_sessionConnect(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_sessionConnect(
     mut env: JNIEnv,
     _class: JClass,
     access_token: JString,
@@ -71,16 +71,75 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_sessionConnect(
 
 /// Disconnect the current Spotify session.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_sessionDisconnect(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_sessionDisconnect(
     _env: JNIEnv,
     _class: JClass,
 ) {
     block_on(session::disconnect());
 }
 
+/// Connect to Spotify with previously-stored Zeroconf credentials.
+/// Returns null on success, or an error message string on failure.
+#[unsafe(no_mangle)]
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_sessionConnectWithCredentials(
+    mut env: JNIEnv,
+    _class: JClass,
+    username: JString,
+    auth_data_base64: JString,
+    auth_type: jint,
+) -> jstring {
+    let u = jstring_to_string(&mut env, &username);
+    let a = jstring_to_string(&mut env, &auth_data_base64);
+
+    match block_on(session::connect_with_stored_credentials(u, a, auth_type)) {
+        Ok(()) => std::ptr::null_mut(),
+        Err(e) => {
+            let msg = format!("{e}");
+            log::error!("sessionConnectWithCredentials failed: {msg}");
+            string_to_jstring(&mut env, &msg)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Zeroconf (Spotify Connect) discovery
+// ---------------------------------------------------------------------------
+
+/// Start advertising this device for Zeroconf pairing under `deviceName`.
+/// Cancels any pairing already in progress.
+#[unsafe(no_mangle)]
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_discoveryStart(
+    mut env: JNIEnv,
+    _class: JClass,
+    device_name: JString,
+) {
+    let name = jstring_to_string(&mut env, &device_name);
+    discovery::start(name);
+}
+
+/// Stop advertising and abandon any pairing in progress.
+#[unsafe(no_mangle)]
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_discoveryStop(
+    _env: JNIEnv,
+    _class: JClass,
+) {
+    discovery::stop();
+}
+
+/// Poll the current Zeroconf pairing status. Returns a JSON string, e.g.
+/// `{"status":"pending"}`, `{"status":"connected","username":...,"authData":...,"authType":...}`,
+/// or `{"status":"error","message":...}`.
+#[unsafe(no_mangle)]
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_discoveryPollResult(
+    mut env: JNIEnv,
+    _class: JClass,
+) -> jstring {
+    string_to_jstring(&mut env, &discovery::poll_result_json())
+}
+
 /// Check if a session is currently connected.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_sessionIsConnected(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_sessionIsConnected(
     _env: JNIEnv,
     _class: JClass,
 ) -> jboolean {
@@ -94,7 +153,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_sessionIsConnected(
 /// Update player/session configuration from a JSON string.
 /// Returns null on success, or an error message on failure.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_playerConfigure(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_playerConfigure(
     mut env: JNIEnv,
     _class: JClass,
     config_json: JString,
@@ -113,7 +172,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_playerConfigure(
 /// Recreate the player with the current config.
 /// Returns null on success, or an error message on failure.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_playerRecreate(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_playerRecreate(
     mut env: JNIEnv,
     _class: JClass,
 ) -> jstring {
@@ -135,7 +194,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_playerRecreate(
 /// The object must implement: void onAudioData(byte[] data)
 /// Returns null on success, or an error message string on failure.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_registerAudioCallback(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_registerAudioCallback(
     mut env: JNIEnv,
     _class: JClass,
     callback: JObject,
@@ -168,7 +227,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_registerAudioCallback(
 /// registerAudioCallback has been called.
 /// Returns null on success, or error message on failure.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_playerCreate(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_playerCreate(
     mut env: JNIEnv,
     _class: JClass,
 ) -> jstring {
@@ -185,7 +244,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_playerCreate(
 /// Load a track by Spotify URI and optionally start playing.
 /// Returns null on success, or error message on failure.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_playerLoad(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_playerLoad(
     mut env: JNIEnv,
     _class: JClass,
     track_uri: JString,
@@ -208,7 +267,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_playerLoad(
 /// Preload the next track so it starts instantly.
 /// Returns null on success, or error message on failure.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_playerPreload(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_playerPreload(
     mut env: JNIEnv,
     _class: JClass,
     track_uri: JString,
@@ -227,7 +286,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_playerPreload(
 
 /// Resume playback.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_playerPlay(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_playerPlay(
     _env: JNIEnv,
     _class: JClass,
 ) {
@@ -238,7 +297,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_playerPlay(
 
 /// Pause playback.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_playerPause(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_playerPause(
     _env: JNIEnv,
     _class: JClass,
 ) {
@@ -249,7 +308,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_playerPause(
 
 /// Seek to a position in milliseconds.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_playerSeek(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_playerSeek(
     _env: JNIEnv,
     _class: JClass,
     position_ms: jint,
@@ -261,7 +320,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_playerSeek(
 
 /// Stop playback.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_playerStop(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_playerStop(
     _env: JNIEnv,
     _class: JClass,
 ) {
@@ -272,7 +331,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_playerStop(
 
 /// Poll for the next player event. Returns a JSON string or null if no event.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_playerPollEvent(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_playerPollEvent(
     mut env: JNIEnv,
     _class: JClass,
 ) -> jstring {
@@ -284,7 +343,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_playerPollEvent(
 
 /// Set player volume (0-65535).
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_playerSetVolume(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_playerSetVolume(
     _env: JNIEnv,
     _class: JClass,
     volume: jint,
@@ -294,7 +353,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_playerSetVolume(
 
 /// Get player volume (0-65535).
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_playerGetVolume(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_playerGetVolume(
     _env: JNIEnv,
     _class: JClass,
 ) -> jint {
@@ -307,7 +366,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_playerGetVolume(
 
 /// Get track metadata by URI. Returns JSON string or error.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_metadataGetTrack(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_metadataGetTrack(
     mut env: JNIEnv,
     _class: JClass,
     track_uri: JString,
@@ -325,7 +384,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_metadataGetTrack(
 
 /// Get album metadata by URI. Returns JSON string or error.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_metadataGetAlbum(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_metadataGetAlbum(
     mut env: JNIEnv,
     _class: JClass,
     album_uri: JString,
@@ -344,7 +403,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_metadataGetAlbum(
 /// Get artist metadata by URI (portrait, top tracks, albums, singles).
 /// Returns JSON string or error.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_metadataGetArtist(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_metadataGetArtist(
     mut env: JNIEnv,
     _class: JClass,
     artist_uri: JString,
@@ -362,7 +421,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_metadataGetArtist(
 
 /// Get playlist metadata by URI. Returns JSON string or error.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_metadataGetPlaylist(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_metadataGetPlaylist(
     mut env: JNIEnv,
     _class: JClass,
     playlist_uri: JString,
@@ -380,7 +439,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_metadataGetPlaylist(
 
 /// Get user's playlists. Returns JSON array of playlist summaries.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_metadataGetUserPlaylists(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_metadataGetUserPlaylists(
     mut env: JNIEnv,
     _class: JClass,
 ) -> jstring {
@@ -396,7 +455,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_metadataGetUserPlaylists
 
 /// Get user's liked songs. Returns JSON playlist info.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_metadataGetLikedSongs(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_metadataGetLikedSongs(
     mut env: JNIEnv,
     _class: JClass,
 ) -> jstring {
@@ -412,7 +471,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_metadataGetLikedSongs(
 
 /// Search Spotify. Returns one page of JSON results for every entity type.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_metadataSearch(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_metadataSearch(
     mut env: JNIEnv,
     _class: JClass,
     query: JString,
@@ -433,7 +492,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_metadataSearch(
 /// Get autoplay (recommended) tracks. Takes context URI and recent track URIs as JSON array.
 /// Returns JSON array of track URI strings, or error JSON.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_metadataGetAutoplayTracks(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_metadataGetAutoplayTracks(
     mut env: JNIEnv,
     _class: JClass,
     context_uri: JString,
@@ -460,7 +519,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_metadataGetAutoplayTrack
 
 /// Add a track to the user's Liked Songs via collection v2.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_libraryAddToLikedSongs(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_libraryAddToLikedSongs(
     mut env: JNIEnv,
     _class: JClass,
     track_uri: JString,
@@ -478,7 +537,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_libraryAddToLikedSongs(
 
 /// Save an album to the user's library via collection v2.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_librarySaveAlbum(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_librarySaveAlbum(
     mut env: JNIEnv,
     _class: JClass,
     album_uri: JString,
@@ -496,7 +555,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_librarySaveAlbum(
 
 /// Save a show (podcast) to the user's library via collection v2.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_librarySaveShow(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_librarySaveShow(
     mut env: JNIEnv,
     _class: JClass,
     show_uri: JString,
@@ -514,7 +573,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_librarySaveShow(
 
 /// Remove an album from the user's library via collection v2.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_libraryUnsaveAlbum(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_libraryUnsaveAlbum(
     mut env: JNIEnv,
     _class: JClass,
     album_uri: JString,
@@ -532,7 +591,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_libraryUnsaveAlbum(
 
 /// Remove a show (podcast) from the user's library via collection v2.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_libraryUnsaveShow(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_libraryUnsaveShow(
     mut env: JNIEnv,
     _class: JClass,
     show_uri: JString,
@@ -550,7 +609,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_libraryUnsaveShow(
 
 /// Unfollow an artist via collection v2.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_libraryUnfollowArtist(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_libraryUnfollowArtist(
     mut env: JNIEnv,
     _class: JClass,
     artist_uri: JString,
@@ -568,7 +627,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_libraryUnfollowArtist(
 
 /// Follow an artist via collection v2.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_libraryFollowArtist(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_libraryFollowArtist(
     mut env: JNIEnv,
     _class: JClass,
     artist_uri: JString,
@@ -586,7 +645,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_libraryFollowArtist(
 
 /// Save (follow) a playlist to the user's library via rootlist v2.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_librarySavePlaylist(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_librarySavePlaylist(
     mut env: JNIEnv,
     _class: JClass,
     playlist_uri: JString,
@@ -604,7 +663,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_librarySavePlaylist(
 
 /// Remove (unfollow) a playlist from the user's library via rootlist v2.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_libraryUnsavePlaylist(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_libraryUnsavePlaylist(
     mut env: JNIEnv,
     _class: JClass,
     playlist_uri: JString,
@@ -622,7 +681,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_libraryUnsavePlaylist(
 
 /// Add a track to an existing playlist via playlist v2.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_libraryAddToPlaylist(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_libraryAddToPlaylist(
     mut env: JNIEnv,
     _class: JClass,
     playlist_uri: JString,
@@ -642,7 +701,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_libraryAddToPlaylist(
 
 /// Create a new playlist via rootlist v2. Returns JSON with the new playlist URI.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_libraryCreatePlaylist(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_libraryCreatePlaylist(
     mut env: JNIEnv,
     _class: JClass,
     name: JString,
@@ -664,7 +723,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_libraryCreatePlaylist(
 
 /// Get user's saved albums via collection v2. Returns JSON array.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_metadataGetSavedAlbums(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_metadataGetSavedAlbums(
     mut env: JNIEnv,
     _class: JClass,
 ) -> jstring {
@@ -680,7 +739,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_metadataGetSavedAlbums(
 
 /// Get user's saved shows via collection v2. Returns JSON array.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_metadataGetSavedShows(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_metadataGetSavedShows(
     mut env: JNIEnv,
     _class: JClass,
 ) -> jstring {
@@ -696,7 +755,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_metadataGetSavedShows(
 
 /// Get user's followed artists via collection v2. Returns JSON array.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_metadataGetFollowedArtists(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_metadataGetFollowedArtists(
     mut env: JNIEnv,
     _class: JClass,
 ) -> jstring {
@@ -712,7 +771,7 @@ pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_metadataGetFollowedArtis
 
 /// Get episodes for a show. Returns JSON array of episode summaries.
 #[unsafe(no_mangle)]
-pub extern "C" fn Java_com_sidespot_bridge_NativeBridge_metadataGetShowEpisodes(
+pub extern "C" fn Java_com_sidetrack_bridge_NativeBridge_metadataGetShowEpisodes(
     mut env: JNIEnv,
     _class: JClass,
     show_uri: JString,
