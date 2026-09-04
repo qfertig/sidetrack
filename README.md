@@ -1,16 +1,17 @@
 # Sidetrack
 
-A lightweight, GMS-free Spotify client built for D-pad-only feature phones and flip phones running Android -- no touchscreen required.
+A lightweight, GMS-free Spotify client built for D-pad-only feature phones and flip phones running Android - no touchscreen required.
 
 Built on [librespot](https://github.com/librespot-org/librespot) (Rust) with a minimal [Jetpack Compose](https://developer.android.com/jetpack/compose) UI.
 
 ## Credit
 
-Sidetrack is a fork of [Sidespot](https://github.com/jtaekman/sidespot) by [@jtaekman](https://github.com/jtaekman), originally built for the [Sidephone SP-01](https://sidephone.com) and its rotary Sundial keypad. Sidetrack retargets that same librespot/Compose foundation at D-pad-and-keypad flip and feature phones instead -- none of this would exist without jtaekman's original work on the JNI bridge, the Compose UI, and the Spotify integration itself.
+Sidetrack is a fork of [Sidespot](https://github.com/jtaekman/sidespot) by [@jtaekman](https://github.com/jtaekman), originally built for the [Sidephone SP-01](https://sidephone.com) and its rotary Sundial keypad. Sidetrack retargets that same librespot/Compose foundation at D-pad-and-keypad flip and feature phones instead - none of this would exist without jtaekman's original work on the JNI bridge, the Compose UI, and the Spotify integration itself.
 
 ## Screenshots
 
 <p align="center">
+  <img src="screenshots/sign_in.png" width="180" alt="Sign In">
   <img src="screenshots/library_top.png" width="180" alt="Library">
   <img src="screenshots/liked_songs.png" width="180" alt="Liked Songs">
   <img src="screenshots/search.png" width="180" alt="Search">
@@ -20,31 +21,31 @@ Sidetrack is a fork of [Sidespot](https://github.com/jtaekman/sidespot) by [@jta
 
 ## Features
 
-- **No Google Play Services required** -- runs on degoogled and minimal Android devices
-- **Optimized for small screens** -- dark theme, designed for tiny flip-phone displays
-- **D-pad only** -- every screen, including seeking and shuffle/repeat, is reachable without a touchscreen
-- **Full playback** -- play, pause, seek, skip, shuffle, repeat, queue management
-- **Spotify Connect pairing** -- pairs with the official Spotify app (phone or desktop) over Wi-Fi via Zeroconf, no browser or manual login needed
-- **Library browsing** -- playlists, liked songs, saved albums, followed artists, saved podcasts, sorted by recently played with album art thumbnails
-- **Library management** -- save/remove albums, playlists, and podcasts directly from the app; add tracks to liked songs or any writable playlist; create new playlists
-- **Search** -- find tracks, artists, albums, playlists, and podcasts
-- **Artist pages** -- browse followed artists, view an artist's popular tracks, and jump straight to the artist from any track
-- **Podcast support** -- browse saved shows, view episode lists, play episodes, dedicated New Episodes screen across all subscribed shows
-- **Background playback** -- foreground service with media notification controls
-- **Dynamic theming** -- album art colors tint the entire UI with smooth animated transitions
-- **Hardware volume keys** -- physical button integration
-- **Audio focus** -- pauses for calls, ducks for notifications, resumes automatically
-- **Play history** -- dedicated History view combining local listening history with your official Spotify history (note: playback through Sidetrack does not appear in your official Spotify history)
-- **E-ink display mode** -- high-contrast monochrome UI optimized for e-ink screens
-- **Settings** -- audio quality (160/320 kbps), volume normalization, gapless playback, autoplay, e-ink mode, key mapping
+- **No Google Play Services required** - runs on degoogled and minimal Android devices
+- **Optimized for small screens** - dark theme, designed for tiny flip-phone displays
+- **D-pad only** - every screen, including seeking and shuffle/repeat, is reachable without a touchscreen
+- **Full playback** - play, pause, seek, skip, shuffle, repeat, queue management
+- **Spotify Connect pairing** - pairs with the official Spotify app (phone or desktop) over Wi-Fi via Zeroconf, no browser or manual login needed
+- **Library browsing** - playlists, liked songs, saved albums, followed artists, saved podcasts, sorted by recently played with album art thumbnails
+- **Library management** - save/remove albums, playlists, and podcasts directly from the app; add tracks to liked songs or any writable playlist; create new playlists
+- **Search** - find tracks, artists, albums, playlists, and podcasts
+- **Artist pages** - browse followed artists, view an artist's popular tracks, and jump straight to the artist from any track
+- **Podcast support** - browse saved shows, view episode lists, play episodes, dedicated New Episodes screen across all subscribed shows
+- **Background playback** - foreground service with media notification controls
+- **Dynamic theming** - album art colors tint the entire UI with smooth animated transitions
+- **Hardware volume keys** - physical button integration
+- **Audio focus** - pauses for calls, ducks for notifications, resumes automatically
+- **Play history** - dedicated History view combining local listening history with your official Spotify history (note: playback through Sidetrack does not appear in your official Spotify history)
+- **E-ink display mode** - high-contrast monochrome UI optimized for e-ink screens
+- **Settings** - audio quality (160/320 kbps), volume normalization, gapless playback, autoplay, e-ink mode, key mapping
 
 ## Supported Devices
 
 Confirmed working:
 
-- **TCL Flip 2 / Gflip6** (tested on this fork)
+- **TCL Flip 2**, running Android 11
 
-Expected to work -- same class of D-pad/keypad-only Android hardware, not yet confirmed by us:
+The following are the same class of D-pad/keypad-only Android hardware, so they should work too, but we haven't gotten our hands on one to actually confirm it:
 
 - Qin F22 Pro
 - Mode 1 Retro II
@@ -56,7 +57,7 @@ Different OEMs map their physical soft keys to different Android keycodes, so ou
 
 ## Controls
 
-D-pad navigation, no touchscreen needed. Defaults below -- remap any of them in **Settings > Key Mapping**.
+D-pad navigation, no touchscreen needed. Defaults below - remap any of them in **Settings > Key Mapping**.
 
 | Control | Action |
 |---------|--------|
@@ -76,12 +77,12 @@ Additional adaptations for D-pad use:
 - **Fill-style focus indicators** on all interactive items
 - **Stacked Play All / Shuffle buttons** in playlist and album views for easy D-pad access
 - **Auto-focus on first content row** when entering any list view
-- **Focus only appears during D-pad use** -- hidden in touch mode to avoid visual clutter
+- **Focus only appears during D-pad use** - hidden in touch mode to avoid visual clutter
 
 ## Requirements
 
 - Spotify Premium account
-- Android 12+ (API 31+), ARM device (arm64-v8a or armeabi-v7a)
+- Android 11+ (API 30+), ARM device (arm64-v8a or armeabi-v7a - both are supported, not just 32-bit)
 
 ## Install
 
@@ -168,13 +169,13 @@ keyPassword=your-key-password
 
 ## Current Limitations
 
-- **Spotify Premium required** -- free-tier accounts are not supported by librespot
-- **ARM only** -- the native library is built for `arm64-v8a` and `armeabi-v7a`
-- **No lossless/HiFi** -- max quality is 320 kbps OGG Vorbis. Spotify's lossless tier uses DRM that librespot cannot and will not circumvent
-- **Spotify Connect (receive-only)** -- pairs via Zeroconf so the official Spotify app can hand off playback to it, but it doesn't advertise/control other Connect targets itself
-- **No crossfade** -- crossfade between tracks is not supported
-- **No offline mode** -- streaming only, no download/cache for offline listening
-- **Account risk** -- Spotify has not sanctioned third-party clients. Use at your own risk
+- **Spotify Premium required** - free-tier accounts are not supported by librespot
+- **ARM only** - the native library is built for `arm64-v8a` and `armeabi-v7a`
+- **No lossless/HiFi** - max quality is 320 kbps OGG Vorbis. Spotify's lossless tier uses DRM that librespot cannot and will not circumvent
+- **Spotify Connect (receive-only)** - pairs via Zeroconf so the official Spotify app can hand off playback to it, but it doesn't advertise/control other Connect targets itself
+- **No crossfade** - crossfade between tracks is not supported
+- **No offline mode** - streaming only, no download/cache for offline listening
+- **Account risk** - Spotify has not sanctioned third-party clients. Use at your own risk
 
 ## Disclaimer
 

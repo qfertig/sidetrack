@@ -25,6 +25,17 @@ android {
         }
     }
 
+    // Produces one APK per ABI (smaller downloads) plus a universal APK
+    // (both ABIs, works on any device) from a single assembleRelease.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a")
+            isUniversalApk = true
+        }
+    }
+
     signingConfigs {
         create("release") {
             val propsFile = rootProject.file("release-keystore.properties")
