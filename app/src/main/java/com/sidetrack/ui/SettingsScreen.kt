@@ -313,6 +313,30 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        ControlRow("D-pad Up / Down", "Now Playing: enter / exit seek mode")
+        ControlRow("D-pad Left / Right", "Skip previous / next track (seek mode: scrub back / forward)")
+        ControlRow("D-pad Left (hold)", "Toggle shuffle")
+        ControlRow("D-pad Right (hold)", "Cycle repeat: off, all, one")
+        ControlRow("OK / Center", "Play or pause. Hold on a track for its actions menu")
+        ControlRow("Back", "Close menus and screens")
+        ControlRow("Volume Up / Down", "Adjust volume")
+
+        Spacer(modifier = Modifier.height(16.dp))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = "These soft keys vary by device - set them up below if the defaults don't match yours",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        ControlRow("Show / Hide Now Playing", "Default: Tab, Soft Right, or #")
+        ControlRow("Cycle Tabs", "Queue, Library, Search. Default: Soft Left or *")
+        ControlRow("Row Actions Menu", "Default: Menu key")
+
+        Spacer(modifier = Modifier.height(16.dp))
+
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -353,5 +377,23 @@ fun SettingsScreen(
         }
 
         Spacer(modifier = Modifier.height(32.dp))
+    }
+}
+
+@Composable
+private fun ControlRow(key: String, description: String) {
+    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+        Text(
+            text = key,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.weight(0.42f),
+        )
+        Text(
+            text = description,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(0.58f),
+        )
     }
 }

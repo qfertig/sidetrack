@@ -112,6 +112,30 @@ class QueueManager {
         }
     }
 
+    /** Swap [index] with the item above it. No-op at the top of the queue. */
+    fun moveUpInQueue(index: Int) {
+        _state.update {
+            val mutable = it.userQueue.toMutableList()
+            if (index in 1 until mutable.size) {
+                val item = mutable.removeAt(index)
+                mutable.add(index - 1, item)
+            }
+            it.copy(userQueue = mutable)
+        }
+    }
+
+    /** Swap [index] with the item below it. No-op at the bottom of the queue. */
+    fun moveDownInQueue(index: Int) {
+        _state.update {
+            val mutable = it.userQueue.toMutableList()
+            if (index in mutable.indices && index < mutable.size - 1) {
+                val item = mutable.removeAt(index)
+                mutable.add(index + 1, item)
+            }
+            it.copy(userQueue = mutable)
+        }
+    }
+
     fun playFromUserQueue(index: Int): String? {
         val current = _state.value
         if (index !in current.userQueue.indices) return null

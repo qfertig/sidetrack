@@ -49,6 +49,17 @@ fun Modifier.focusHighlight(
 ): Modifier = composed {
     var hasFocus by remember { mutableStateOf(false) }
     val showHighlight by dpadActive
+    // Set on the DPAD_CENTER long-press DOWN, but onEnterKey() itself isn't invoked
+    // until the matching key-up. Whatever onEnterKey() does (usually opening a sheet)
+    // has to grab focus to be usable, and on this hardware, moving focus while the
+    // physical key is still down makes the eventual key-up cancel whatever just took
+    // focus - the sheet would open and immediately die the instant the button is
+    // released. Deferring to key-up means nothing takes focus until the key is
+    // already released and inert, so there's nothing left for the release to cancel.
+    // The DOWN is still consumed so combinedClickable never sees the long-press
+    // either, and the UP is consumed only when it's the tail of a qualifying hold -
+    // a plain short press still falls through to combinedClickable's own click.
+    var centerLongPressQualified by remember { mutableStateOf(false) }
     val resolvedColor = if (color == Color.Unspecified) MaterialTheme.colorScheme.primary else color
     val fillColor = if (hasFocus && showHighlight) resolvedColor.copy(alpha = 0.5f) else Color.Transparent
 
@@ -73,9 +84,19 @@ fun Modifier.focusHighlight(
                     native.action == KeyEvent.ACTION_DOWN && (
                         kc == KeyEvent.KEYCODE_ENTER ||
                         kc == KeyEvent.KEYCODE_MENU ||
-                        kc == KeyEvent.KEYCODE_SOFT_RIGHT ||
-                        (kc == KeyEvent.KEYCODE_DPAD_CENTER && native.isLongPress)
+                        kc == KeyEvent.KEYCODE_SOFT_RIGHT
                     ) -> {
+                        onEnterKey()
+                        return@onPreviewKeyEvent true
+                    }
+                    kc == KeyEvent.KEYCODE_DPAD_CENTER && native.action == KeyEvent.ACTION_DOWN &&
+                        native.isLongPress -> {
+                        centerLongPressQualified = true
+                        return@onPreviewKeyEvent true
+                    }
+                    kc == KeyEvent.KEYCODE_DPAD_CENTER && native.action == KeyEvent.ACTION_UP &&
+                        centerLongPressQualified -> {
+                        centerLongPressQualified = false
                         onEnterKey()
                         return@onPreviewKeyEvent true
                     }

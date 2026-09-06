@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -61,6 +62,7 @@ fun TrackActionsSheet(
     onGoToAlbum: (() -> Unit)? = null,
     artists: List<ArtistSummary> = emptyList(),
     onGoToArtist: ((String) -> Unit)? = null,
+    trackName: String = "",
 ) {
     var view by remember { mutableStateOf(SheetView.Actions) }
     var feedbackText by remember { mutableStateOf("") }
@@ -110,6 +112,11 @@ fun TrackActionsSheet(
                     }
                     SheetActionRow(Icons.Default.Add, "Add to Playlist...") {
                         view = SheetView.PlaylistPicker
+                    }
+                    SheetActionRow(Icons.Default.Radio, "Start Radio") {
+                        playerViewModel.startRadio(trackUri, trackName)
+                        feedbackText = "Starting Radio"
+                        view = SheetView.Feedback
                     }
                     if (onGoToAlbum != null) {
                         SheetActionRow(Icons.Default.Album, "Go to Album") {

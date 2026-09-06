@@ -776,6 +776,42 @@ class PlayerViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Start Spotify's radio for a single track: seeds the same autoplay/recommendation
+     * endpoint normally used to keep playback going past the end of a context, but off
+     * just this one track instead of recent listening history.
+     */
+    fun startRadio(trackUri: String, trackName: String = "") {
+        viewModelScope.launch(Dispatchers.IO) {
+            val recentJson = JSONArray(listOf(trackUri)).toString()
+            val resultJson = try {
+                NativeBridge.metadataGetAutoplayTracks(trackUri, recentJson)
+            } catch (_: Exception) {
+                null
+            } ?: return@launch
+
+            if (resultJson.contains("\"error\"")) return@launch
+
+            val trackUris = try {
+                val arr = JSONArray(resultJson)
+                (0 until arr.length()).map { arr.getString(it) }
+            } catch (_: Exception) {
+                return@launch
+            }
+            if (trackUris.isEmpty()) return@launch
+
+            queueManager.loadContext(
+                tracks = trackUris,
+                startIndex = 0,
+                contextName = if (trackName.isNotEmpty()) "$trackName Radio" else "Radio",
+                contextUri = trackUri,
+                isAutoplay = true,
+            )
+            loadTrack(trackUris[0])
+            preloadUpcoming()
+        }
+    }
+
     private fun isAutoplayEnabled(): Boolean {
         val ctx = appContext ?: return false
         val prefs = ctx.getSharedPreferences("sidetrack_settings", Context.MODE_PRIVATE)

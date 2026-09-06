@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.LibraryAdd
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
@@ -57,6 +58,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.sidetrack.api.ApiResult
 import com.sidetrack.bridge.TrackInfo
+import com.sidetrack.viewmodel.ExportState
 import com.sidetrack.viewmodel.LibraryViewModel
 import com.sidetrack.viewmodel.PlayerViewModel
 import com.sidetrack.viewmodel.TrackListViewModel
@@ -75,6 +77,8 @@ fun TrackListScreen(
 ) {
     val state by trackListViewModel.uiState.collectAsState()
     val libraryState by libraryViewModel.uiState.collectAsState()
+    val exportState by trackListViewModel.exportState.collectAsState()
+    val context = LocalContext.current
     var selectedTrackUri by remember { mutableStateOf<String?>(null) }
     var saveAlbumFeedback by remember { mutableStateOf<String?>(null) }
     var savePlaylistFeedback by remember { mutableStateOf<String?>(null) }
@@ -366,6 +370,16 @@ fun TrackListScreen(
                                 Text(savePlaylistFeedback ?: "Follow Playlist")
                             }
                         }
+                        if (isPlaylist) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            ExportPlaylistButton(
+                                exportState = exportState,
+                                onExport = { trackListViewModel.exportPlaylist(context) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .focusDarken(),
+                            )
+                        }
                     } else {
                         // Inline buttons for touch
                         Row(
@@ -474,6 +488,18 @@ fun TrackListScreen(
                                 }
                             }
                         }
+                        if (isPlaylist) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Spacer(modifier = Modifier.weight(1f))
+                                ExportPlaylistButton(
+                                    exportState = exportState,
+                                    onExport = { trackListViewModel.exportPlaylist(context) },
+                                )
+                            }
+                        }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                 }
@@ -561,6 +587,7 @@ fun TrackListScreen(
             } else null,
             artists = selectedTrack?.artists.orEmpty(),
             onGoToArtist = onGoToArtist,
+            trackName = selectedTrack?.name.orEmpty(),
         )
     }
 }
@@ -671,4 +698,44 @@ internal fun formatDuration(ms: Int): String {
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
     return "%d:%02d".format(minutes, seconds)
+}
+
+@Composable
+private fun ExportPlaylistButton(
+    exportState: ExportState,
+    onExport: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val label = when (exportState) {
+        is ExportState.Idle -> "Export"
+        is ExportState.InProgress -> "Exporting ${exportState.fetched}/${exportState.total}"
+        is ExportState.Done -> "Saved ${exportState.result.trackCount} tracks"
+        is ExportState.Failed -> "Export failed"
+    }
+    val inProgress = exportState is ExportState.InProgress
+    Button(
+        onClick = onExport,
+        enabled = !inProgress,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.secondary,
+        ),
+        shape = RoundedCornerShape(20.dp),
+        modifier = modifier,
+    ) {
+        if (inProgress) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(16.dp),
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.onSecondary,
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Default.FileDownload,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(label)
+    }
 }

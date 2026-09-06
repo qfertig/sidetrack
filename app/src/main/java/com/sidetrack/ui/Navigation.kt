@@ -74,6 +74,7 @@ object Routes {
     const val SAVED_SHOWS = "saved_shows"
     const val NEW_EPISODES = "new_episodes"
     const val HISTORY = "history"
+    const val DISCOVER = "discover"
     const val SHOW_DETAIL = "show_detail/{uri}/{name}"
     const val ARTIST = "artist/{uri}"
 
@@ -329,10 +330,27 @@ fun SidetrackNavigation(
                             onHistoryClick = {
                                 navController.navigate(Routes.HISTORY)
                             },
+                            onDiscoverClick = {
+                                navController.navigate(Routes.DISCOVER)
+                            },
                             onSettingsClick = {
                                 navController.navigate(Routes.SETTINGS)
                             },
                             viewModel = libraryViewModel,
+                        )
+                    }
+
+                    composable(Routes.DISCOVER) {
+                        DiscoverScreen(
+                            playerViewModel = playerViewModel,
+                            libraryViewModel = libraryViewModel,
+                            onBack = { navController.popBackStack() },
+                            onGoToAlbum = { albumUri ->
+                                navController.navigate(Routes.trackList(albumUri))
+                            },
+                            onGoToArtist = { artistUri ->
+                                navController.navigate(Routes.artist(artistUri))
+                            },
                         )
                     }
 

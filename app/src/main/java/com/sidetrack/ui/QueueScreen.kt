@@ -28,8 +28,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -274,6 +277,19 @@ fun QueueScreen(
                             .verticalScroll(rememberScrollState())
                             .padding(16.dp),
                     ) {
+                        val index = selectedQueueIndex
+                        if (index != null && index > 0) {
+                            QueueSheetActionRow(Icons.Default.KeyboardArrowUp, "Move Up") {
+                                playerViewModel.queueManager.moveUpInQueue(index)
+                                selectedQueueIndex = index - 1
+                            }
+                        }
+                        if (index != null && index < queueState.userQueue.size - 1) {
+                            QueueSheetActionRow(Icons.Default.KeyboardArrowDown, "Move Down") {
+                                playerViewModel.queueManager.moveDownInQueue(index)
+                                selectedQueueIndex = index + 1
+                            }
+                        }
                         QueueSheetActionRow(Icons.Default.RemoveCircleOutline, "Remove from Queue") {
                             selectedQueueIndex?.let {
                                 playerViewModel.queueManager.removeFromQueue(it)
@@ -281,6 +297,11 @@ fun QueueScreen(
                             selectedQueueIndex = null
                         }
                         if (selectedUri != null) {
+                            QueueSheetActionRow(Icons.Default.Radio, "Start Radio") {
+                                playerViewModel.startRadio(selectedUri, queueState.trackMetadata[selectedUri]?.name.orEmpty())
+                                feedbackText = "Starting Radio"
+                                sheetView = "feedback"
+                            }
                             QueueSheetActionRow(Icons.Default.Favorite, "Add to Liked Songs") {
                                 playerViewModel.addToLikedSongs(selectedUri) { result ->
                                     feedbackText = when (result) {

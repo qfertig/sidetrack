@@ -1,10 +1,13 @@
 package com.sidetrack.viewmodel
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sidetrack.bridge.NativeBridge
 import com.sidetrack.bridge.PlaylistInfo
 import com.sidetrack.bridge.TrackInfo
+import com.sidetrack.export.ExportResult
+import com.sidetrack.export.PlaylistExporter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -15,6 +18,13 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+
+sealed interface ExportState {
+    data object Idle : ExportState
+    data class InProgress(val fetched: Int, val total: Int) : ExportState
+    data class Done(val result: ExportResult) : ExportState
+    data class Failed(val message: String) : ExportState
+}
 
 data class TrackListUiState(
     val name: String = "",
@@ -36,6 +46,9 @@ class TrackListViewModel : ViewModel() {
 
     private val _uiState = MutableStateFlow(TrackListUiState())
     val uiState: StateFlow<TrackListUiState> = _uiState.asStateFlow()
+
+    private val _exportState = MutableStateFlow<ExportState>(ExportState.Idle)
+    val exportState: StateFlow<ExportState> = _exportState.asStateFlow()
 
     private var loadedUri: String? = null
     private val metadataDispatcher = Dispatchers.IO.limitedParallelism(4)
@@ -205,5 +218,29 @@ class TrackListViewModel : ViewModel() {
                 hasMoreTracks = end < uris.size,
             )
         }
+    }
+
+    fun exportPlaylist(context: Context) {
+        val state = _uiState.value
+        if (state.trackUris.isEmpty() || _exportState.value is ExportState.InProgress) return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            _exportState.value = ExportState.InProgress(0, state.trackUris.size)
+            try {
+                val result = PlaylistExporter(context.applicationContext).export(
+                    title = state.name,
+                    trackUris = state.trackUris,
+                ) { fetched, total ->
+                    _exportState.value = ExportState.InProgress(fetched, total)
+                }
+                _exportState.value = ExportState.Done(result)
+            } catch (e: Exception) {
+                _exportState.value = ExportState.Failed(e.message ?: "Export failed")
+            }
+        }
+    }
+
+    fun dismissExportState() {
+        _exportState.value = ExportState.Idle
     }
 }
